@@ -20,14 +20,19 @@ parser = argparse.ArgumentParser(#prog = "LocRePha",
 parser.add_argument("-i","--infile",
                     type=str,
                     required = True,
-                    help = "The full or relative path to the ufiltered bam file."
-                    # FIXME: skulle måske være med seperator, så man selv kan vælge seperatoren
+                    help = "The full or relative path to the unfiltered alignment file."
                     )
 
 parser.add_argument("-o","--outfile",
                     type=str,
                     default = "outfile.bam",
-                    help = "The full or relative path to the bam file containing the filtered and phased reads.")
+                    help = "The full or relative path to the alignment file containing the filtered and phased reads.")
+
+parser.add_argument("-s","--range",
+                    metavar= "CHROM:START-END",
+                    type=str,
+                    required = True,
+                    help = "The range to be evaluated. Should be in the following format; CHROM:START-END.")
 
 parser.add_argument("-r","--reference",
                     metavar= "REFERENCE",
@@ -38,18 +43,10 @@ parser.add_argument("-r","--reference",
 parser.add_argument("-a","--assembly",
                     metavar= "FASTA",
                     type=str,
-                    required = False,
                     default = "asm.fasta",
                     help = "The desired full or relative path to the output file containing the haplotype assemblies.")
 
-parser.add_argument("-s","--range",
-                    metavar= "CHROM:START-END",
-                    type=str,
-                    required = True,
-                    help = "The range to be evaluated. Should be in the following format; CHROM:START-END.")
-
-parser.add_argument("--maxdiff",
-                    metavar= "MAXDIFF",
+parser.add_argument("--max_diff",
                     type=int,
                     default = 2,
                     help = "The maximum allowed SNP differences between blocks. Is used for low variance merging.")
@@ -67,12 +64,32 @@ parser.add_argument("--minimum_overlap",
 parser.add_argument("--minimum_coverage",
                     type=int,
                     default = 10,
-                    help = "The minimal number of reads for a block to be considered.") # FIXME: Is the even necessary?
+                    help = "The minimal number of reads for a block to be considered.")
 
 parser.add_argument("--minimum_depth",
                     type=int,
                     default = 5,
-                    help = "The minimal depth per site to be considered high coverage .") # FIXME: Is the even necessary?
+                    help = "The minimal depth per site to be considered high coverage.")
+
+parser.add_argument("--minimum_variance",
+                    type=int,
+                    default = 0.25,
+                    help = "The maximal allowed variance in a usable SNP.")
+
+parser.add_argument("--minimum_identity",
+                    type=int,
+                    default = 0.9,
+                    help = "The minimum identity required to merge two high confidence blocks.")
+
+parser.add_argument("--maximal_iterations",
+                    type=int,
+                    default = 5,
+                    help = "The maximal allowed variance in a usable SNP.")
+
+parser.add_argument("--minimum_pct_overlap",
+                    type=int,
+                    default = 0.5,
+                    help = "The minimum percentage overlap for two blocks to merge or a read to be added to a block.")
 
 parser.add_argument("--show_secondary_reads",
                     action='store_true',
@@ -119,13 +136,16 @@ maxdiff = args.maxdiff
 minimum_overlap = args.minimum_overlap
 minimum_depth = args.minimum_depth
 minimum_coverage = args.minimum_coverage
+max_cleanup_iterations = 5 # FIXME: MISSING ARG
+max_variance = 0.25 # FIXME: MISSING ARG
+minimum_identity = 0.9 # FIXME: MISSING ARG
+minimum_pct_overlap = 0.5 # FIXME: MISSING ARG
+expected_polyploidy = 2 # FIXME: MISSING ARG. Not implemented
 show_secondary_reads = args.show_secondary_reads
 use_secondary_reads = True # FIXME: Makes no sense not to use, so should not even be an option
 show_ungrouped = args.show_ungrouped_reads
 show_removed = args.show_removed_reads
 verbosity = args.verbosity
-max_cleanup_iterations = 5 # FIXME: MISSING ARG
-expected_polyploidy = 2 # FIXME: MISSING ARG
 
 ####################################################################################################
 # FUNCTIONS                                                                                        #
@@ -582,6 +602,10 @@ def remove_read_from_variant_dict(pos, read_type, read, start_pos, haploblock_di
                         print(f'pos {pos} removed from {block}', file=sys.stderr)
 
             if sum([base in ["deleted", "I", "D", fastafile.fetch(chrom, pos, pos+1).upper()] for base in variant_dict[pos]]) == len(variant_dict[pos]) or sum([base not in ["deleted"] for base in variant_dict[pos]]) == 1:
+
+                remove_variant(pos, haploblock_dict, read_dict)
+            
+            elif "deleted" in variant_dict[pos] and len(variant_dict[pos]["deleted"])/sum([len(variant_dict[pos][base]) for base in variant_dict[pos]]) > max_variance: # If the deleted base count exceeds max_variance it is likely a bad variant and should therefore be removed.
 
                 remove_variant(pos, haploblock_dict, read_dict)
 
@@ -1561,7 +1585,7 @@ def reevaluate_remaining_ungrouped_reads(haploblock_dict, not_unique_list): # Ca
 
                 continue
 
-            fit_list = make_fit_list(read_variant_dict, haploblock_dict, diff, len(read_variant_dict)*0.5)
+            fit_list = make_fit_list(read_variant_dict, haploblock_dict, diff, len(read_variant_dict)*minimum_pct_overlap)
 
             # print("This is from the remaining ungrouped reads:", fit_list, file=sys.stderr)
 
@@ -1602,7 +1626,7 @@ def reevaluate_remaining_ungrouped_reads(haploblock_dict, not_unique_list): # Ca
 
                             break
                 
-                    fit_list = make_fit_list(read_variant_dict, haploblock_dict, diff, len(read_variant_dict)*0.5)
+                    fit_list = make_fit_list(read_variant_dict, haploblock_dict, diff, len(read_variant_dict)*minimum_pct_overlap)
 
                     # print("This is from the remaining ungrouped reads:", fit_list, file=sys.stderr)
 
@@ -1616,7 +1640,13 @@ def reevaluate_remaining_ungrouped_reads(haploblock_dict, not_unique_list): # Ca
 
                 # print("This is from the remaining ungrouped reads:", fit_list, file=sys.stderr)
 
-                block = fit_list[0][0]
+                if len(fit_list) > 1:
+
+                    block = sorted([(hap, sum([sum([pos in read_dict[read_type_2][read_2][start_pos_2][2] for read_type_2, read_2, start_pos_2 in haploblock_dict[hap][1]]) for pos in read_dict[read_type][read][start_pos][2]])) for hap, _, _, _ in fit_list], key = lambda x:x[1])[-1][0]
+                
+                else:
+
+                    block = fit_list[0][0]
 
                 if verbosity > 3:
 
@@ -1756,6 +1786,10 @@ def remove_read_pos_from_variant_dict(mismatch_list, read_type, read, start_pos,
         if sum([base in ["deleted", "I", "D", fastafile.fetch(chrom, pos, pos+1).upper()] for base in variant_dict[pos]]) == len(variant_dict[pos]) or sum([base not in ["deleted"] for base in variant_dict[pos]]) == 1:
 
             remove_variant(pos, haploblock_dict, read_dict)
+        
+        elif "deleted" in variant_dict[pos] and len(variant_dict[pos]["deleted"])/sum([len(variant_dict[pos][base]) for base in variant_dict[pos]]) > max_variance: # If the deleted base count exceeds max_variance it is likely a bad variant and should therefore be removed.
+
+            remove_variant(pos, haploblock_dict, read_dict)
 
         if verbosity > 3:
 
@@ -1883,13 +1917,13 @@ def cleanup_variants(haploblock_dict): # Calls remove_variant, remove_read_pos_f
 
                         continue
 
-                    if len(read_dict[read_type][read][start_pos][2])*0.5 > maxdiff:
+                    if len(read_dict[read_type][read][start_pos][2])*minimum_pct_overlap > maxdiff:
                         
-                        fit_list = make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, maxdiff, len(read_dict[read_type][read][start_pos][2])*0.5)
+                        fit_list = make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, maxdiff, len(read_dict[read_type][read][start_pos][2])*minimum_pct_overlap)
                     
                     else:
 
-                        fit_list = make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, len(read_dict[read_type][read][start_pos][2])*0.5, len(read_dict[read_type][read][start_pos][2])*0.5)
+                        fit_list = make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, len(read_dict[read_type][read][start_pos][2])*minimum_pct_overlap, len(read_dict[read_type][read][start_pos][2])*minimum_pct_overlap)
 
                     if len(fit_list) == 1 and len(fit_list[0][3]) > 0:
 
@@ -1935,13 +1969,13 @@ def cleanup_variants(haploblock_dict): # Calls remove_variant, remove_read_pos_f
 
                     if read_dict[read_type][read][start_pos][3] == "ungrouped":
 
-                        if len(read_dict[read_type][read][start_pos][2])*0.5 > maxdiff:
+                        if len(read_dict[read_type][read][start_pos][2])*minimum_pct_overlap > maxdiff:
                             
-                            fit_list = make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, maxdiff, len(read_dict[read_type][read][start_pos][2])*0.5)
+                            fit_list = make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, maxdiff, len(read_dict[read_type][read][start_pos][2])*minimum_pct_overlap)
                         
                         else:
 
-                            fit_list = make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, len(read_dict[read_type][read][start_pos][2])*0.5, len(read_dict[read_type][read][start_pos][2])*0.5)
+                            fit_list = make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, len(read_dict[read_type][read][start_pos][2])*minimum_pct_overlap, len(read_dict[read_type][read][start_pos][2])*minimum_pct_overlap)
 
                         # print("Variant cleanup:", read_type, read, start_pos, read_dict[read_type][read][start_pos][3], fit_list)
 
@@ -2199,7 +2233,7 @@ def make_unphasable_consensus(haploblock_dict, not_unique_list, split_haplotypes
 
                 continue
 
-            fit_list = make_fit_list(read_variant_dict, haploblock_dict, 0, len(read_variant_dict)*0.5)
+            fit_list = make_fit_list(read_variant_dict, haploblock_dict, 0, len(read_variant_dict)*minimum_pct_overlap)
 
             # print("Unphasable consensus:", read_type, read, start_pos, read_dict[read_type][read][start_pos][3], fit_list)
             
@@ -2789,6 +2823,7 @@ def choose_primary_or_secondary_reads(hap_dict): # Calls cleanup_hap_dict
                 # print(block2 in hap_dict[block1][0], block1 in hap_dict[block2][0], len(hap_dict[block1][2])-hap_dict[block2][0][block1][0] >= minimum_coverage, len(hap_dict[block2][2]) - hap_dict[block1][0][block2][0] >= minimum_coverage)
 
                 if block2 in hap_dict[block1][0] and block1 in hap_dict[block2][0] and len(hap_dict[block1][2])-hap_dict[block2][0][block1][0] >= minimum_coverage and len(hap_dict[block2][2]) - hap_dict[block1][0][block2][0] >= minimum_coverage and hap_dict[block1][0][block2][0] + hap_dict[block2][0][block1][0] >= minimum_coverage:
+                # if block2 in hap_dict[block1][0] and block1 in hap_dict[block2][0] and len(hap_dict[block1][2])-hap_dict[block2][0][block1][0] >= minimum_coverage and len(hap_dict[block2][2]) - hap_dict[block1][0][block2][0] >= minimum_coverage:
 
                     if max(list(hap_dict[block1][1].keys())) < min(list(hap_dict[block2][1].keys())) or max(list(hap_dict[block2][1].keys())) < min(list(hap_dict[block1][1].keys())):
 
@@ -3367,7 +3402,7 @@ def stitch_blocks(haploblock_dict, maxdiff, merged_list): # Calls compare_haplob
 
             overlap, identity, mismatch_list = compare_haploblocks(hap1, hap2, haploblock_dict)
 
-            if len(mismatch_list) <= maxdiff and overlap > 0:
+            if overlap > 0 and 0.5 <= identity/overlap:
 
                 print(hap1, hap2, overlap, identity, mismatch_list, [base1 not in ["I", "D", "no overlap", "overlap", "within"] and base2 not in ["I", "D", "no overlap", "overlap", "within"] and sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap1][1]]) > minimum_count and sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap2][1]]) > minimum_count for pos, base1, base2 in mismatch_list], [(base1 not in ["I", "D", "no overlap", "overlap", "within"], base2 not in ["I", "D", "no overlap", "overlap", "within"], sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap1][1]]), sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap2][1]])) for pos, base1, base2 in mismatch_list], file=sys.stderr)
                 print(hap1, hap2, overlap, identity, mismatch_list, [base1 not in ["I", "D", "no overlap", "overlap", "within"] and base2 not in ["I", "D", "no overlap", "overlap", "within"] and sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap1][1]]) > minimum_coverage and sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap2][1]]) > minimum_coverage for pos, base1, base2 in mismatch_list], [(base1 not in ["I", "D", "no overlap", "overlap", "within"], base2 not in ["I", "D", "no overlap", "overlap", "within"], sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap1][1]]), sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap2][1]])) for pos, base1, base2 in mismatch_list], file=sys.stderr)
@@ -3398,13 +3433,13 @@ def add_to_fit_lists(read_type, read, start_pos, fit_lists, maxdiff, haploblock_
 
     read_variant_dict = read_dict[read_type][read][start_pos][2]
 
-    if maxdiff < len(read_variant_dict)*0.5:
+    if maxdiff < len(read_variant_dict)*minimum_pct_overlap:
 
-        fit_list = make_fit_list(read_variant_dict, haploblock_dict, maxdiff, len(read_variant_dict)*0.5)
+        fit_list = make_fit_list(read_variant_dict, haploblock_dict, maxdiff, len(read_variant_dict)*minimum_pct_overlap)
     
     else:
 
-        fit_list = make_fit_list(read_variant_dict , haploblock_dict, len(read_variant_dict)*0.5, len(read_variant_dict)*0.5)
+        fit_list = make_fit_list(read_variant_dict , haploblock_dict, len(read_variant_dict)*minimum_pct_overlap, len(read_variant_dict)*minimum_pct_overlap)
 
     if len(fit_list) > 0:
 
@@ -4490,6 +4525,10 @@ def create_haplo_variant_dict(): # Calls get_reference_sequence, make_fit_list a
                 for i in range(len(fit_list)):
 
                     add_base_to_haplo_variant_dict(pos, alt_base, fit_list[i][0], haplo_variant_dict)
+            
+            elif len(haploblock_dict) == 0:
+
+                add_base_to_haplo_variant_dict(pos, alt_base, hap_name, haplo_variant_dict)
 
             elif hap_name == "unphasable":
 
@@ -5037,6 +5076,7 @@ def test_variant_dict():
                 new_dict[base][read_dict[read_type][read][start_pos][3]] += 1
 
         print(pos, [(base, len(variant_dict[pos][base])) for base in variant_dict[pos]], new_dict, file=sys.stderr)
+
 
 
 ####################################################################################################

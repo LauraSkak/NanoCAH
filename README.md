@@ -3,8 +3,8 @@ A local rephaser build to deal with difficult to phase regions with segmental du
 
 ### Introduction
 
-This software was developed to solve the notoriously difficult gene region around CYP21A2, which cause congenital adrenal hyperplasia (CAH). The CYP21A2 gene is difficult to resolve due to the homologous pseudogene CYP21A1P located just upstream of the active CYP21A2 gene. The close proximity and high homology between the two often make read mapping to the region ambiguous. Additionally, high genomic instability in the area causes large insertions, deletions and chimeric genes. All these factors lead to variant calls from this region often being unreliable.
-To solve this problem Oxford Nanopore adaptive sampling of chromosome 6 for each sample and the resulting data is run through the NanoCAH algorithm. By employing this specialized bioinformatic algorithm, it is not possible to accurately distinguish between reads that map to the active CYP21A2 gene and the reads that map to the pseudogene, determine the presence of large deletion, insertions or chimeric genes and phase reads, thereby making variant calling in the region much more reliable.
+This software was developed to resolve the notoriously difficult gene region around CYP21A2, which cause congenital adrenal hyperplasia (CAH). The CYP21A2 gene is difficult to resolve due to the homologous pseudogene CYP21A1P located just upstream of the active CYP21A2 gene. The close proximity and high homology between the two often make read mapping to the region ambiguous. Additionally, high genomic instability in the area causes large insertions, deletions and chimeric genes. All these factors lead to variant calls from this region often being unreliable.
+To solve this problem, Oxford Nanopore adaptive sampling of chromosome 6 is performed on each sample and the resulting data is run through the NanoCAH algorithm. By employing this specialized bioinformatic algorithm, it is now possible to accurately distinguish between reads that map to the active CYP21A2 gene and the reads that map to the pseudogene, determine the presence of large deletion, insertions or chimeric genes and accurately phase reads, thereby making variant calling in the region much more reliable.
 
 ### The algorithm
 
@@ -12,11 +12,15 @@ The following is a more technical description of how the NanoCAH algorithm works
 
 The input parameters:
 
-* maxdiff - The maximal SNP difference, used for merging blocks. (DEFAULT: 2)
-* minimum_overlap - The minimal identical overlap between blocks, used for low variance merging. (DEFAULT: 3)
+* max_diff - The maximal SNP difference, used for merging blocks. (DEFAULT: 8)
+* minimum_overlap - The minimal identical overlap between blocks or between read and block, used for low variance merging. (DEFAULT: 3)
 * minimum_count - The minimum SNP representation count for a SNP to remain usable. (DEFAULT: 2)
 * minimum_depth - The minimum read count at a particular SNP position, is used for block splitting. (DEFAULT: 3)
 * minimum_coverage - The minimum read count in one block, is used in read selection. (DEFAULT: 5)
+* max_iterations - Implemented to prevent infinite while loops. (DEFAULT: 10)
+* max_variance - The maximal allowed variance in a usable SNP. Is used to remove SNPs that are heterozygotic due to being located in an errorprone region. (DEFAULT: 25)
+* minimum_identity - The minimum required identity to merge two blocks with high confidence SNPs. Used in final merging. (DEFAULT: 0.9)
+* minimum_pct_overlap - The minimal identical percentage overlap between blocks or between read and block, used for final merging. (DEFAULT: 0.5)
 
 ##### Creating data dictionaries
 
@@ -61,9 +65,13 @@ In the case where it is impossible to know which mapping is the correct one, all
 
 ##### Assemble haplotypes
 
-The last step is stitching blocks together to make haplotypes. If two blocks comes from the same haplotype but contains a large deletion or insertion, then there will be a left and right grouping of that haplotype.
+The last step is stitching blocks together to make haplotypes. If two blocks comes from the same haplotype but contains a large deletion or insertion, then there will be a left and right grouping of that haplotype. After the final haplotype assembly a consensus sequence is made for each haplotype and in the case of a deletion or insertion, the two sides are compared to find the optimal overlap. 
 
 ... missing figure showing how blocks are stitched together ...
+
+##### Things to consider
+
+In the cases of complete homozygozity a consensus sequence will be made and named "unphasable". It is still possible to remove read mappings in the cases of multimapping, but if there is a deletion in a completely homozygotic regions, the software will not be able to correctly stitch the two sides, which will cause the consensus sequence to have an unintended duplication. Although this is true, it still improves the ability to call variants for the sample. 
 
 ### FAQ
 
