@@ -4271,6 +4271,10 @@ def create_haplotypes(haploblock_dict, not_unique_list, merge_list): # Calls rei
     test_haploblock_dict(haploblock_dict)
     test_not_unique_list(not_unique_list, haploblock_dict)
 
+    if verbosity > 1:
+
+        print(f'\nAfter creation of haplotypes the block count is {len(haploblock_dict)}.\n', file=sys.stderr)
+
     return haplotype_dict, not_unique_list
 
 
@@ -5077,6 +5081,15 @@ def test_variant_dict():
 
         print(pos, [(base, len(variant_dict[pos][base])) for base in variant_dict[pos]], new_dict, file=sys.stderr)
 
+def test_exit_code_prematurely():
+
+    print(len(not_unique_list), sum([read_dict[read_type][read][start_pos][3] == "ungrouped" and len(read_dict[read_type][read][start_pos][2]) != 0 for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]]), file=sys.stderr)
+    test_haploblock_dict(haploblock_dict)
+    test_not_unique_list(not_unique_list, haploblock_dict)
+    test_variant_dict()
+
+    write_bam_file(bam_file)
+    exit()
 
 
 ####################################################################################################
@@ -5110,34 +5123,17 @@ if verbosity > 0:
 
 haploblock_dict, not_unique_list = perform_no_variance_merging(haploblock_dict, not_unique_list) # TODO: Add comments.
 
-# write_bam_file(bam_file)
-# exit()
-
 if verbosity > 0:
 
     print("\n\nPerforming low variance merging.\n", file=sys.stderr)
 
 haploblock_dict, not_unique_list = perform_low_variance_merging(haploblock_dict, not_unique_list) # TODO: Add comments.
 
-print(len(not_unique_list), sum([read_dict[read_type][read][start_pos][3] == "ungrouped" and len(read_dict[read_type][read][start_pos][2]) != 0 for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]]), file=sys.stderr)
-test_haploblock_dict(haploblock_dict)
-test_not_unique_list(not_unique_list, haploblock_dict)
-test_variant_dict()
+if verbosity > 0:
 
-# write_bam_file(bam_file)
-# exit()
+    print("\n\nPerforming multiple mapped read selection.\n", file=sys.stderr)
 
 hap_dict, merge_list, not_unique_list, unchosen_list = reevaluate_secondary_reads(not_unique_list, haploblock_dict)
-
-print(len(not_unique_list), sum([read_dict[read_type][read][start_pos][3] == "ungrouped" and len(read_dict[read_type][read][start_pos][2]) != 0 for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]]), file=sys.stderr)
-test_haploblock_dict(haploblock_dict)
-test_not_unique_list(not_unique_list, haploblock_dict)
-test_variant_dict()
-
-print(merge_list, file=sys.stderr)
-
-# write_bam_file(bam_file)
-# exit()
 
 if verbosity > 0:
 
@@ -5147,33 +5143,18 @@ if verbosity > 0:
 
 haplo_dict, not_unique_list = create_haplotypes(haploblock_dict, not_unique_list, merge_list)
 
-if verbosity > 1:
+if verbosity > 0:
 
-    print(f'\nAfter creation of haplotypes the block count is {len(haploblock_dict)}.\n', file=sys.stderr)
+    print(f'\nWriting filtered alignment outfile.\n', file=sys.stderr)
 
-print(merge_list, file=sys.stderr)
-print(haplo_dict, file=sys.stderr)
+group_unchosen(unchosen_list)
 
-print(len(not_unique_list), sum([read_dict[read_type][read][start_pos][3] == "ungrouped" and len(read_dict[read_type][read][start_pos][2]) != 0 for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]]), file=sys.stderr)
-test_haploblock_dict(haploblock_dict)
-test_not_unique_list(not_unique_list, haploblock_dict)
-test_variant_dict()
-
-# write_bam_file(bam_file)
+write_bam_file(bam_file)
 # exit()
 
 if verbosity > 0:
 
-    print(f'\nMaking haplotype consensus sequences.\n', file=sys.stderr)
-
-group_unchosen(unchosen_list)
-
-test_haploblock_dict(haploblock_dict)
-test_not_unique_list(not_unique_list, haploblock_dict)
-test_variant_dict()
-
-write_bam_file(bam_file)
-# exit()
+    print(f'\nMaking haplotypes consensus sequences.\n', file=sys.stderr)
 
 make_haplotype_consensus_sequence(haplo_dict, asm_file)
 
@@ -5184,7 +5165,15 @@ make_haplotype_consensus_sequence(haplo_dict, asm_file)
 
 
 
+### For tests
 
+# print(len(not_unique_list), sum([read_dict[read_type][read][start_pos][3] == "ungrouped" and len(read_dict[read_type][read][start_pos][2]) != 0 for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]]), file=sys.stderr)
+# test_haploblock_dict(haploblock_dict)
+# test_not_unique_list(not_unique_list, haploblock_dict)
+# test_variant_dict()
+
+# write_bam_file(bam_file)
+# exit()
 
 
 # for block in haploblock_dict:
