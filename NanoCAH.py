@@ -91,14 +91,6 @@ parser.add_argument("--minimum_pct_overlap",
                     default = 0.5,
                     help = "The minimum percentage overlap for two blocks to merge or a read to be added to a block.")
 
-parser.add_argument("--show_secondary_reads",
-                    action='store_true',
-                    help = "Append all secondary reads to the same block as the primary read. Not implemented yet.") # FIXME: is not implemented
-
-parser.add_argument("--show_ungrouped_reads",
-                    action='store_true',
-                    help = "Keep all ungrouped reads in the final bam.")
-
 parser.add_argument("--show_removed_reads",
                     action='store_true',
                     help = "Keep all removed reads in the final bam.")
@@ -132,18 +124,15 @@ fastafile = pysam.FastaFile(args.reference)
 use_SAs = False # FIXME: Virker ikke, når True
 minimum_base_quality = 0 # FIXME: måske ikke nødvendig
 minimum_count = args.minimum_count
-maxdiff = args.maxdiff
+maxdiff = args.max_diff
 minimum_overlap = args.minimum_overlap
 minimum_depth = args.minimum_depth
 minimum_coverage = args.minimum_coverage
-max_cleanup_iterations = 5 # FIXME: MISSING ARG
-max_variance = 0.25 # FIXME: MISSING ARG
-minimum_identity = 0.9 # FIXME: MISSING ARG
-minimum_pct_overlap = 0.5 # FIXME: MISSING ARG
+max_cleanup_iterations = args.maximal_iterations
+max_variance = args.minimum_variance
+minimum_identity = args.minimum_identity
+minimum_pct_overlap = args.minimum_pct_overlap
 expected_polyploidy = 2 # FIXME: MISSING ARG. Not implemented
-show_secondary_reads = args.show_secondary_reads
-use_secondary_reads = True # FIXME: Makes no sense not to use, so should not even be an option
-show_ungrouped = args.show_ungrouped_reads
 show_removed = args.show_removed_reads
 verbosity = args.verbosity
 
@@ -534,80 +523,72 @@ def remove_read_from_variant_dict(pos, read_type, read, start_pos, haploblock_di
 
     base = read_dict[read_type][read][start_pos][1][pos]
 
-    if pos in variant_dict: # FIXME: WHY IS THIS NECESSARY. SOMETHING IS WRONG IN THE REMOVAL OF VARIANTS FROM READ DICT WHEN VARIANT IS REMOVED FROM VARIANT DICT.
+    for i in range(len(variant_dict[pos][base])):
 
-        if base in variant_dict[pos]: # FIXME: WHY IS THIS NECESSARY. SOMETHING IS WRONG IN THE REMOVAL OF VARIANTS FROM READ DICT WHEN VARIANT IS REMOVED FROM VARIANT DICT. This comes because deleted reads are not reestablished after deletion and subsequent ungrouping
+        if variant_dict[pos][base][i] == (read_type, read, start_pos):
 
-            for i in range(len(variant_dict[pos][base])):
+            del variant_dict[pos][base][i]
 
-                if variant_dict[pos][base][i] == (read_type, read, start_pos):
+            # To make sure the read variants are still deleted if the variant or variant base is later removed they are saved in a "deleted" category
 
-                    del variant_dict[pos][base][i]
+            if "deleted" not in variant_dict[pos]:
 
-                    # To make sure the read variants are still deleted if the variant or variant base is later removed they are saved in a "deleted" category
+                variant_dict[pos]["deleted"] = []
 
-                    if "deleted" not in variant_dict[pos]:
+            variant_dict[pos]["deleted"].append((read_type, read, start_pos))
 
-                        variant_dict[pos]["deleted"] = []
+            break
 
-                    variant_dict[pos]["deleted"].append((read_type, read, start_pos))
+    # If the base count is less than the minimum count the base is removed from variant dict and reads in read dict.
 
-                    break
+    if len(variant_dict[pos][base]) < minimum_count:
 
-            # If the base count is less than the minimum count the base is removed from variant dict and reads in read dict.
+        for read_type_1, read_1, start_pos_1 in variant_dict[pos][base]:
 
-            if len(variant_dict[pos][base]) < minimum_count:
+            del read_dict[read_type_1][read_1][start_pos_1][1][pos]
+            del read_dict[read_type_1][read_1][start_pos_1][2][pos]
 
-                for read_type_1, read_1, start_pos_1 in variant_dict[pos][base]:
+            remove_pos_from_haploblocks(read_type_1, read_1, start_pos_1, pos, haploblock_dict)
 
-                    del read_dict[read_type_1][read_1][start_pos_1][1][pos]
-                    del read_dict[read_type_1][read_1][start_pos_1][2][pos]
+        del variant_dict[pos][base]
 
-                    remove_pos_from_haploblocks(read_type_1, read_1, start_pos_1, pos, haploblock_dict)
+        new_deleted_list = []
 
-                del variant_dict[pos][base]
+        for read_type_1, read_1, start_pos_1 in variant_dict[pos]["deleted"]:
 
-                new_deleted_list = []
+            if read_dict[read_type_1][read_1][start_pos_1][2][pos] == base:
 
-                for read_type_1, read_1, start_pos_1 in variant_dict[pos]["deleted"]:
+                del read_dict[read_type_1][read_1][start_pos_1][2][pos]
 
-                    if pos not in read_dict[read_type_1][read_1][start_pos_1][2]: # FIXME... blev tilføjet, da der skulle slettes varianter fra removed reads. er måske ellers kommet fra at vi nu gemmer både primære og secondære.
+                remove_pos_from_haploblocks(read_type_1, read_1, start_pos_1, pos, haploblock_dict)
 
-                        continue
+            else:
 
-                    if read_dict[read_type_1][read_1][start_pos_1][2][pos] == base:
+                new_deleted_list.append((read_type_1, read_1, start_pos_1))
 
-                        del read_dict[read_type_1][read_1][start_pos_1][2][pos]
+        if len(new_deleted_list) == 0:
 
-                        remove_pos_from_haploblocks(read_type_1, read_1, start_pos_1, pos, haploblock_dict)
+            del variant_dict[pos]["deleted"]
 
-                    else:
+        else:
 
-                        new_deleted_list.append((read_type_1, read_1, start_pos_1))
+            variant_dict[pos]["deleted"] = new_deleted_list
+        
+        for block in haploblock_dict:
 
-                if len(new_deleted_list) == 0:
+            if pos in haploblock_dict[block][0] and haploblock_dict[block][0][pos] == base:
 
-                    del variant_dict[pos]["deleted"]
+                del haploblock_dict[block][0][pos]
 
-                else:
+                print(f'    pos {pos} removed from {block}', file=sys.stderr)
 
-                    variant_dict[pos]["deleted"] = new_deleted_list
-                
-                for block in haploblock_dict:
+    if sum([base in ["deleted", "I", "D", fastafile.fetch(chrom, pos, pos+1).upper()] for base in variant_dict[pos]]) == len(variant_dict[pos]) or sum([base not in ["deleted"] for base in variant_dict[pos]]) == 1:
 
-                    if pos in haploblock_dict[block][0] and haploblock_dict[block][0][pos] == base:
+        remove_variant(pos, haploblock_dict, read_dict)
+    
+    elif "deleted" in variant_dict[pos] and len(variant_dict[pos]["deleted"])/sum([len(variant_dict[pos][base]) for base in variant_dict[pos]]) > max_variance: # If the deleted base count exceeds max_variance it is likely a bad variant and should therefore be removed.
 
-                        del haploblock_dict[block][0][pos]
-
-                        print(f'pos {pos} removed from {block}', file=sys.stderr)
-
-            if sum([base in ["deleted", "I", "D", fastafile.fetch(chrom, pos, pos+1).upper()] for base in variant_dict[pos]]) == len(variant_dict[pos]) or sum([base not in ["deleted"] for base in variant_dict[pos]]) == 1:
-
-                remove_variant(pos, haploblock_dict, read_dict)
-            
-            elif "deleted" in variant_dict[pos] and len(variant_dict[pos]["deleted"])/sum([len(variant_dict[pos][base]) for base in variant_dict[pos]]) > max_variance: # If the deleted base count exceeds max_variance it is likely a bad variant and should therefore be removed.
-
-                remove_variant(pos, haploblock_dict, read_dict)
+        remove_variant(pos, haploblock_dict, read_dict)
 
     if pos in read_dict[read_type][read][start_pos][1]:
 
@@ -646,8 +627,7 @@ def make_fit_list(other_variant_dict, haploblock_dict, max_diff, minimum_overlap
 
                     mismatch_list.append((pos, haploblock_variant_dict[pos], other_variant_dict[pos]))
 
-        # if overlap == 0 or identity == 0: # FIXME: test
-        if overlap == 0: # FIXME: test
+        if overlap == 0:
 
             continue
 
@@ -4283,16 +4263,8 @@ def write_bam_file(bam_file):
     outfile = pysam.AlignmentFile(bam_file, "wb", template=samfile)
 
     for read_type in read_dict:
-
         for read in read_dict[read_type]:
-
             for start_pos in read_dict[read_type][read]:
-
-                if read not in read_dict[read_type]: # FIXME: Dunno why this is necessary
-
-                    # print(read_type, read, start_pos, file=sys.stderr)
-
-                    continue
 
                 if args.merge_overlap and ("left" in read_dict[read_type][read][start_pos][3] or "right" in read_dict[read_type][read][start_pos][3]):
 
@@ -4301,10 +4273,6 @@ def write_bam_file(bam_file):
                 else:
 
                     hap_name = read_dict[read_type][read][start_pos][3]
-
-                if not show_ungrouped and hap_name == "ungrouped":
-
-                    continue
 
                 if not show_removed and hap_name == "removed":
 
@@ -4411,13 +4379,7 @@ def create_haplo_variant_dict(): # Calls get_reference_sequence, make_fit_list a
 
     print(hap_unphasale_range)
 
-    if use_secondary_reads:
-
-        iter = samfile.pileup(chrom, start, end, stepper="nofilter")
-
-    else:
-
-        iter = samfile.pileup(chrom, start, end)
+    iter = samfile.pileup(chrom, start, end, stepper="nofilter")
 
     haplo_variant_dict = {}
     haplo_asm = {}
@@ -4431,9 +4393,7 @@ def create_haplo_variant_dict(): # Calls get_reference_sequence, make_fit_list a
 
             continue
 
-        if use_secondary_reads:
-
-            pileupcolumn.set_min_base_quality(0)
+        pileupcolumn.set_min_base_quality(0)
 
         haplo_variant_dict[pos] = {}
 
@@ -4470,7 +4430,8 @@ def create_haplo_variant_dict(): # Calls get_reference_sequence, make_fit_list a
             hap_name = read_dict[read_type][pileupread.alignment.query_name][start_pos][3]
 
             # if hap_name in ["removed", "ungrouped"]:
-            if hap_name in ["removed", "unchosen"]:
+            # if hap_name in ["removed", "unchosen"]:
+            if hap_name in ["removed"]:
 
                 continue
 
@@ -4520,7 +4481,7 @@ def create_haplo_variant_dict(): # Calls get_reference_sequence, make_fit_list a
 
                     alt_base = pileupread.alignment.query_sequence[pileupread.query_position]
 
-            if hap_name == "ungrouped":
+            if hap_name in ["ungrouped", "unchosen"]:
 
                 read_variant_dict = read_dict[read_type][read_name][start_pos][2]
 
@@ -5041,25 +5002,29 @@ def test_not_unique_list(not_unique_list, haploblock_dict):
         print(read_type, read, start_pos, len(read_dict[read_type][read][start_pos][1]), len(read_dict[read_type][read][start_pos][2]), read_dict[read_type][read][start_pos][3], file=sys.stderr)
         print(make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, maxdiff, 1), file=sys.stderr)
 
-        if len(make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, maxdiff, 1)) == 0 and len(read_dict[read_type][read][start_pos][2]) > maxdiff:
+        if len(make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, maxdiff, 1)) == 0:
 
-            diff = maxdiff + 1
+            print(make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, maxdiff, 0))
 
-            while True:
+        # if len(make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, maxdiff, 1)) == 0 and len(read_dict[read_type][read][start_pos][2]) > maxdiff:
 
-                if len(make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, diff, 1)) > 0:
+        #     diff = maxdiff + 1
+
+        #     while True:
+
+        #         if len(make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, diff, 1)) > 0:
                 
-                    print(make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, diff, 1), file=sys.stderr)
+        #             print(make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, diff, 1), file=sys.stderr)
 
-                    break
+        #             break
 
-                else:
+        #         else:
 
-                    diff += 1
+        #             diff += 1
         
-        elif len(make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, maxdiff, 1)) == 0 and len(read_dict[read_type][read][start_pos][2]) <= maxdiff:
+        # elif len(make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, maxdiff, 1)) == 0 and len(read_dict[read_type][read][start_pos][2]) <= maxdiff:
 
-            print(make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, maxdiff, 0), file=sys.stderr)
+        #     print(make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, maxdiff, 0), file=sys.stderr)
 
 def test_variant_dict():
     
