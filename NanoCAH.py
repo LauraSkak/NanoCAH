@@ -3222,7 +3222,7 @@ def cleanup_low_depth_reads(hap_dict, not_unique_list): # Calls reintroduce_read
 
             print("\t", block, len(hap_dict[block][2]), [(hap, hap_dict[block][0][hap][0]) for hap in hap_dict[block][0]], file=sys.stderr)
 
-def update_haploblock_dict(hap_dict, haploblock_dict):
+def update_haploblock_dict(hap_dict, merged_list, haploblock_dict):
 
     if verbosity > 0:
 
@@ -3237,6 +3237,8 @@ def update_haploblock_dict(hap_dict, haploblock_dict):
             if block in haploblock_dict:
 
                 del haploblock_dict[block]
+
+            merged_list = update_merge_list(block, block, haploblock_dict, merged_list)
 
             continue
 
@@ -3275,6 +3277,8 @@ def update_haploblock_dict(hap_dict, haploblock_dict):
         print(f'{block} is updated.', file=sys.stderr)
 
         # print(block, len(hap_dict[block][2]), [(hap, hap_dict[block][0][hap][0]) for hap in hap_dict[block][0]], len(new_read_list), file=sys.stderr)
+
+    return merged_list
 
 def update_merge_list(hap1, hap2, haploblock_dict, merged_list):
 
@@ -3360,7 +3364,13 @@ def update_merge_list(hap1, hap2, haploblock_dict, merged_list):
 
         i += 1
 
+    merged_list = set([",".join(merge) for merge in merged_list])
+
+    merged_list = [merge.split(",") for merge in merged_list]
+
     print("After merge updating:", merged_list, file=sys.stderr)
+
+    return merged_list
 
 def stitch_blocks(haploblock_dict, maxdiff, merged_list): # Calls compare_haploblocks, merge_haploblocks and update_merge_list
 
@@ -3407,7 +3417,9 @@ def stitch_blocks(haploblock_dict, maxdiff, merged_list): # Calls compare_haplob
                     print(f'{hap1} and {hap2} is merged, because they had an overlap of {overlap} and a mismatch count of {len(mismatch_list)}.', file=sys.stderr)
                 
                 merge_haploblocks(hap1, hap2, mismatch_list, haploblock_dict)
-                update_merge_list(hap1, hap2, haploblock_dict, merged_list)
+                merged_list = update_merge_list(hap1, hap2, haploblock_dict, merged_list)
+
+    return merged_list
 
 def add_to_fit_lists(read_type, read, start_pos, fit_lists, maxdiff, haploblock_dict): # Calls make_fit_list and remove_read_pos_from_variant_dict
 
@@ -4011,9 +4023,9 @@ def reevaluate_secondary_reads(not_unique_list, haploblock_dict): # Calls make_h
 
     # Update the haploblock_dict with the hap_dict information
 
-    update_haploblock_dict(hap_dict, haploblock_dict)
+    merges = update_haploblock_dict(hap_dict, merges, haploblock_dict)
 
-    stitch_blocks(haploblock_dict, maxdiff, merges)
+    merges = stitch_blocks(haploblock_dict, maxdiff, merges)
 
     unchosen_list, not_unique_list = reevaluate_ungrouped_primary_and_secondary_reads(haploblock_dict)
 
@@ -4032,7 +4044,7 @@ def reevaluate_secondary_reads(not_unique_list, haploblock_dict): # Calls make_h
         # TODO: Noget går galt med haploblock varianter
         not_unique_list = remove_removed_read_variants(haploblock_dict, not_unique_list, unchosen_list)
 
-        stitch_blocks(haploblock_dict, 0, merge_list)
+        merge_list = stitch_blocks(haploblock_dict, 0, merge_list)
 
         # print(haploblock_dict_pre_filter, len(haploblock_dict), ungrouped_list_pre_filter, len(not_unique_list), variant_dict_pre_filter, len(variant_dict))
 
@@ -4049,7 +4061,7 @@ def reevaluate_secondary_reads(not_unique_list, haploblock_dict): # Calls make_h
         haploblock_dict_pre_filter = len(haploblock_dict)
         ungrouped_list_pre_filter = len(not_unique_list)
 
-        stitch_blocks(haploblock_dict, maxdiff, merge_list)
+        merge_list = stitch_blocks(haploblock_dict, maxdiff, merge_list)
 
         not_unique_list = reevaluate_remaining_ungrouped_reads(haploblock_dict, not_unique_list)
 
