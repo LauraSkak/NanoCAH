@@ -3944,7 +3944,7 @@ def evaluate_unchosen_list(unchosen_list, haploblock_dict, not_unique_list): # C
 
     return new_unchosen_list
 
-def remove_removed_read_variants(haploblock_dict, not_unique_list, unchosen_list): # Calls remove_variant and cleanup_variants
+def remove_removed_read_variants(haploblock_dict): # Calls remove_variant and cleanup_variants
 
     for pos in list(variant_dict.keys()):
 
@@ -4042,7 +4042,7 @@ def reevaluate_secondary_reads(not_unique_list, haploblock_dict): # Calls make_h
         unchosen_list = evaluate_unchosen_list(unchosen_list, haploblock_dict, not_unique_list)
 
         # TODO: Noget går galt med haploblock varianter
-        not_unique_list = remove_removed_read_variants(haploblock_dict, not_unique_list, unchosen_list)
+        not_unique_list = remove_removed_read_variants(haploblock_dict)
 
         merge_list = stitch_blocks(haploblock_dict, 0, merge_list)
 
@@ -4242,7 +4242,7 @@ def create_haplotypes(haploblock_dict, not_unique_list, merge_list): # Calls rei
         variant_dict_pre_filter = len(haploblock_dict)
         ungrouped_list_pre_filter = len(not_unique_list)
 
-        not_unique_list = remove_removed_read_variants(haploblock_dict, not_unique_list, unchosen_list)        
+        not_unique_list = remove_removed_read_variants(haploblock_dict)        
 
         print(len(not_unique_list), sum([read_dict[read_type][read][start_pos][3] == "ungrouped" and len(read_dict[read_type][read][start_pos][2]) != 0 for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]]), file=sys.stderr)
         test_haploblock_dict(haploblock_dict)
@@ -4278,6 +4278,12 @@ def write_bam_file(bam_file):
         for read in read_dict[read_type]:
             for start_pos in read_dict[read_type][read]:
 
+                if read not in read_dict[read_type]: # FIXME: Dunno why this is necessary
+
+                    # print(read_type, read, start_pos, file=sys.stderr)
+
+                    continue
+
                 if args.merge_overlap and ("left" in read_dict[read_type][read][start_pos][3] or "right" in read_dict[read_type][read][start_pos][3]):
 
                     hap_name = read_dict[read_type][read][start_pos][3].split("_")[0]
@@ -4303,7 +4309,7 @@ def group_unchosen(unchosen_list): # Calls make_fit_list
 
     for read in unchosen_list:
 
-        print("\n")
+        print("\n", file=sys.stderr)
         
         groups = set([read_dict["p"][read]["-"][3]] + [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]])
 
@@ -4313,7 +4319,6 @@ def group_unchosen(unchosen_list): # Calls make_fit_list
 
             continue
 
-        # fit_list = make_fit_list(read_dict["p"][read]["-"][2], haploblock_dict, maxdiff, 1)
         fit_list = make_fit_list(read_dict["p"][read]["-"][2], haploblock_dict, 0, 1)
 
         print("p", "-", fit_list, file=sys.stderr)
@@ -4328,7 +4333,7 @@ def group_unchosen(unchosen_list): # Calls make_fit_list
 
                 continue
 
-            fit_list = make_fit_list(read_dict["s"][read][start_pos][2], haploblock_dict, maxdiff, 1)
+            fit_list = make_fit_list(read_dict["s"][read][start_pos][2], haploblock_dict, 0, 1)
 
             print("s", start_pos, fit_list, file=sys.stderr)
 
@@ -4553,7 +4558,9 @@ def create_haplo_variant_dict(): # Calls get_reference_sequence, make_fit_list a
 
     return haplo_asm
     
-def make_haplotype_consensus_sequence(haplo_dict, outfile_name): # Calls create_haplo_variant_dict
+def make_haplotype_consensus_sequence(haplo_dict, outfile_name, unchosen_list): # Calls create_haplo_variant_dict
+
+    group_unchosen(unchosen_list)
 
     haplo_asm = create_haplo_variant_dict()
 
@@ -4803,7 +4810,7 @@ def make_haplotype_consensus_sequence(haplo_dict, outfile_name): # Calls create_
 
                                 # print(i, j, 3, "right shift", indel)
 
-                                print(len(merged_asm), ["right shift indel", indel, i, j])
+                                # print(len(merged_asm), ["right shift indel", indel, i, j])
 
                                 break
 
@@ -4822,7 +4829,7 @@ def make_haplotype_consensus_sequence(haplo_dict, outfile_name): # Calls create_
 
                                 # print(i, j, 3, "left shift", indel)
 
-                                print(len(merged_asm), ["left shift indel", indel, i, j])
+                                # print(len(merged_asm), ["left shift indel", indel, i, j])
 
                                 break
 
@@ -4850,7 +4857,7 @@ def make_haplotype_consensus_sequence(haplo_dict, outfile_name): # Calls create_
                                 total_overlap += indel
 
                                 # print(i, j, 3, "mismatch shift", indel)
-                                print(len(merged_asm), ["mismatch shift", indel, i, j])
+                                # print(len(merged_asm), ["mismatch shift", indel, i, j])
 
                                 break
                                 
@@ -4888,13 +4895,13 @@ def make_haplotype_consensus_sequence(haplo_dict, outfile_name): # Calls create_
 
             if i == overlap and j == right_overlap:
 
-                print(len(merged_asm), ["match", i, j, running_overlap])
+                # print(len(merged_asm), ["match", i, j, running_overlap])
 
                 # print(overlap, right_overlap, total_overlap, mismatch_count, mismatch_list, mismatch_count/total_overlap, "\n", file=sys.stderr)
 
                 if best_asm[2] > mismatch_count/total_overlap:
 
-                    print(overlap, right_overlap, total_overlap, len(merged_asm), mismatch_count, mismatch_list, mismatch_count/total_overlap, "\n", file=sys.stderr)
+                    # print(overlap, right_overlap, total_overlap, len(merged_asm), mismatch_count, mismatch_list, mismatch_count/total_overlap, "\n", file=sys.stderr)
 
                     # if mismatch_count/total_overlap < 0.25:
 
@@ -5124,8 +5131,6 @@ if verbosity > 0:
 
     print(f'\nWriting filtered alignment outfile.\n', file=sys.stderr)
 
-group_unchosen(unchosen_list)
-
 write_bam_file(bam_file)
 # exit()
 
@@ -5133,7 +5138,7 @@ if verbosity > 0:
 
     print(f'\nMaking haplotypes consensus sequences.\n', file=sys.stderr)
 
-make_haplotype_consensus_sequence(haplo_dict, asm_file)
+make_haplotype_consensus_sequence(haplo_dict, asm_file, unchosen_list)
 
 
 
