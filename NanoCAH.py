@@ -135,6 +135,8 @@ minimum_pct_overlap = args.minimum_pct_overlap
 expected_polyploidy = 2 # FIXME: MISSING ARG. Not implemented
 show_removed = args.show_removed_reads
 verbosity = args.verbosity
+max_overlap = 60000 # FIXME: MISSING ARG.
+max_error_length = 10000
 
 ####################################################################################################
 # FUNCTIONS                                                                                        #
@@ -2229,9 +2231,25 @@ def make_unphasable_consensus(haploblock_dict, not_unique_list, split_haplotypes
                 not_unique_list.append((read_type, read, start_pos))
                 reintroduce_read_to_variant_dict(read_type, read, start_pos)
 
-                # print("Unphasable consensus:", read_type, read, start_pos, read_dict[read_type][read][start_pos][3], fit_list)
+                print("Unphasable consensus:", read_type, read, start_pos, read_dict[read_type][read][start_pos][3], fit_list)
 
         haploblock_dict[block] = [new_read_variant_dict, new_read_list]
+
+    new_not_unique_list = []
+
+    for read_type, read, start_pos in not_unique_list:
+
+        fit_list = make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, 0, len(read_dict[read_type][read][start_pos][2]))
+
+        if len(fit_list) == 1: 
+
+            block = fit_list[0][0]
+
+            add_read_to_haploblock(read_type, read, start_pos, fit_list[0][0], fit_list[0][3], haploblock_dict)
+        
+        else:
+
+            new_not_unique_list.append((read_type, read, start_pos))
 
     if split_haplotypes:
 
@@ -2633,12 +2651,13 @@ def choose_primary_or_secondary_reads(hap_dict): # Calls cleanup_hap_dict
         print("\n\nChoosing between the primary or a secondary alignment for each read.\n", file=sys.stderr)
 
     merges = []
+    compared_pairs = []
 
     for hap in list(haploblock_dict.keys()):
 
         block1 = hap
 
-        if len(hap_dict[block1][2]) == 0 or sum([hap_dict[block1][0][hap][0] for hap in hap_dict[block1][0]]) == 0 or (len(hap_dict[block1][0]) == 1 and "ungrouped" in hap_dict[block1][0]):
+        if len(hap_dict[block1][2]) < minimum_coverage:
 
             continue
 
@@ -2652,27 +2671,19 @@ def choose_primary_or_secondary_reads(hap_dict): # Calls cleanup_hap_dict
 
         for block2 in list(hap_dict[block1][0].keys()):
 
+            if block2 in ["unphasable", "ungrouped"]:
+
+                continue
+
             block1 = hap
 
-            if block2 not in haploblock_dict:
+            if f'{block1}_{block2}' in compared_pairs or f'{block2}_{block1}' in compared_pairs:
 
                 continue
+            
+            else:
 
-            if len(hap_dict[block2][2]) == 0 and sum([hap_dict[block2][0][hap][0] for hap in hap_dict[block2][0]]) == 0:
-
-                continue
-
-            # If the secondary reads have already been removed in the lone clean process
-
-            if hap_dict[block1][0][block2][0] == 0:
-
-                continue
-
-            if "ungrouped" in hap_dict[block2][0]:
-
-                if len(hap_dict[block2][2]) == 0 and sum([hap_dict[block2][0][hap][0] for hap in hap_dict[block2][0]]) == hap_dict[block2][0]["ungrouped"][0]:
-
-                    continue
+                compared_pairs.append(f'{block1}_{block2}')
 
             if verbosity > 1:
 
@@ -2695,294 +2706,118 @@ def choose_primary_or_secondary_reads(hap_dict): # Calls cleanup_hap_dict
                     print("\t", block1, len(hap_dict[block1][2]), [(hap, hap_dict[block1][0][hap][0]) for hap in hap_dict[block1][0]], file=sys.stderr)
                     print("\t", block2, len(hap_dict[block2][2]), [(hap, hap_dict[block2][0][hap][0]) for hap in hap_dict[block2][0]], file=sys.stderr)
 
-            if block1 == block2: # FIXME: test
+            if block1 not in hap_dict[block2][0]:
 
-                removed_reads = []
-
-                block_min = min(haploblock_dict[block1][0])
-                block_max = max(haploblock_dict[block1][0])
-
-                for _, read, start_pos in hap_dict[block1][0][block1][2]:
-
-                    # print((min(read_dict["p"][read]["-"][2])-block_min, block_max-max(read_dict["p"][read]["-"][2])), [(min(read_dict["s"][read][start_pos][2])-block_min, block_max-max(read_dict["s"][read][start_pos][2])) for start_pos in read_dict["s"][read]], min(haploblock_dict[block1][0]), max(haploblock_dict[block1][0]))
-                    # print(min(min(read_dict["p"][read]["-"][2])-block_min, block_max-max(read_dict["p"][read]["-"][2])), [min(min(read_dict["s"][read][start_pos][2])-block_min, block_max-max(read_dict["s"][read][start_pos][2])) for start_pos in read_dict["s"][read]], min(haploblock_dict[block1][0]), max(haploblock_dict[block1][0]))
-
-                    if min(min(read_dict["p"][read]["-"][2])-block_min, block_max-max(read_dict["p"][read]["-"][2])) < min(min(read_dict["s"][read][start_pos][2])-block_min, block_max-max(read_dict["s"][read][start_pos][2])):
-
-                        # print("s")
-
-                        removed_reads.append(f'{"p"}_{read}_{"-"}')
-                    
-                    else:
-
-                        # print("p")
-
-                        removed_reads.append(f'{"s"}_{read}_{start_pos}')
-                
-                print(removed_reads)
-                
-                new_read_dict = {}
-                new_read_list = []
-
-                for read_type, read, start_pos in hap_dict[block1][0][block1][2]:
-
-                    print("\n")
-                    print(read_type, read, start_pos)
-                    print(read_dict["p"][read]["-"][3], [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]])
-
-                    if f'{read_type}_{read}_{start_pos}' in removed_reads:
-
-                        read_dict[read_type][read][start_pos][3] = "removed"
-                    
-                    else:
-                        
-                        new_read_dict.update(read_dict[read_type][read][start_pos][2].copy())
-                        new_read_list.append((read_type, read, start_pos))
-
-                    print(read_dict["p"][read]["-"][3], [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]])
-
-                hap_dict[block1][0][block1][0] = len(new_read_list)
-                hap_dict[block1][0][block1][1] = new_read_dict
-                hap_dict[block1][0][block1][2] = new_read_list
-
-                if "ungrouped" in hap_dict[block1][0]:
-
-                    for read_type, read, start_pos in hap_dict[block1][0]["ungrouped"][2]:
-
-                        read_dict[read_type][read][start_pos][3] = "ungrouped"
-
-                    hap_dict[block1][0]["ungrouped"] = [0, {}, []]
-                
-                new_read_dict = {}
-                new_read_list = []
-
-                for read_type, read, start_pos in hap_dict[block1][2]:
-
-                    if read in read_dict["s"]:
-
-                        print("\n")
-                        print(read_type, read, start_pos)
-                        print(read_dict["p"][read]["-"][3], [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]])
-
-                    if f'{read_type}_{read}_{start_pos}' in removed_reads:
-
-                        read_dict[read_type][read][start_pos][3] = "removed"
-                    
-                    elif read in read_dict["s"] and "ungrouped" in [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]]: # FIXME: test. This is added because if the secondary read is ungrouped because it ambigously maps to more than one read, there is no way to know if the secondary read is correct. Therefore the primary read is ungrouped.
-
-                        read_dict[read_type][read][start_pos][3] = "ungrouped"
-                    
-                    else:
-                        
-                        new_read_dict.update(read_dict[read_type][read][start_pos][2].copy())
-                        new_read_list.append((read_type, read, start_pos))
-
-                    if read in read_dict["s"]:
-
-                        print(read_dict["p"][read]["-"][3], [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]])
-
-                hap_dict[block1][1] = new_read_dict
-                hap_dict[block1][2] = new_read_list
-
-                # for _, read, start_pos in hap_dict[block1][0][block1][2]:
-
-                #     print(read_dict["p"][read]["-"][3], read_dict["s"][read][start_pos][3])
-
-                # for _, read, _ in hap_dict[block1][2]:
-
-                #     if read in read_dict["s"]:
-
-                #         print(read_dict["p"][read]["-"][3], [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]])
+                hap_dict[block2][0][block1] = [0, {}, []]
             
-            else:
+            if len(hap_dict[block2][2])-hap_dict[block1][0][block2][0] < minimum_coverage or len(hap_dict[block1][2])-hap_dict[block2][0][block1][0] < minimum_coverage:
 
-                if len(hap_dict[block2][2])-hap_dict[block1][0][block2][0] >= minimum_coverage and block1 not in hap_dict[block2][0]:
+                if len(hap_dict[block2][2])-hap_dict[block1][0][block2][0] > len(hap_dict[block1][2])-hap_dict[block2][0][block1][0]:
 
-                    hap_dict[block2][0][block1] = [0, {}, []]
+                    block1, block2 = block2, block1
 
-                # print(block2 in hap_dict[block1][0], block1 in hap_dict[block2][0], len(hap_dict[block1][2])-hap_dict[block2][0][block1][0] >= minimum_coverage, len(hap_dict[block2][2]) - hap_dict[block1][0][block2][0] >= minimum_coverage)
+                if verbosity > 1:
 
-                if block2 in hap_dict[block1][0] and block1 in hap_dict[block2][0] and len(hap_dict[block1][2])-hap_dict[block2][0][block1][0] >= minimum_coverage and len(hap_dict[block2][2]) - hap_dict[block1][0][block2][0] >= minimum_coverage and hap_dict[block1][0][block2][0] + hap_dict[block2][0][block1][0] >= minimum_coverage:
-                # if block2 in hap_dict[block1][0] and block1 in hap_dict[block2][0] and len(hap_dict[block1][2])-hap_dict[block2][0][block1][0] >= minimum_coverage and len(hap_dict[block2][2]) - hap_dict[block1][0][block2][0] >= minimum_coverage:
+                    print(f'  {block2} secondary reads are removed because they map to {block1}')
+                    print(f'  {block2} primary reads are removed because their secondary reads map to {block1}', file=sys.stderr)
 
-                    if max(list(hap_dict[block1][1].keys())) < min(list(hap_dict[block2][1].keys())) or max(list(hap_dict[block2][1].keys())) < min(list(hap_dict[block1][1].keys())):
+                if block2 in hap_dict[block1][0]:
 
-                        merge_status = "no overlap"
+                    new_read_list = []
+                    new_read_dict = {}
 
-                    elif min(list(hap_dict[block1][1].keys())) < min(list(hap_dict[block2][1].keys())) and max(list(hap_dict[block2][1].keys())) < max(list(hap_dict[block1][1].keys())) or min(list(hap_dict[block2][1].keys())) < min(list(hap_dict[block1][1].keys())) and max(list(hap_dict[block1][1].keys())) < max(list(hap_dict[block2][1].keys())):
+                    for read_type, read, start_pos in hap_dict[block2][2]:
 
-                        merge_status = "within"
-                    
-                    elif (min(list(hap_dict[block1][1].keys())) < min(list(hap_dict[block2][1].keys())) and min(list(hap_dict[block2][1].keys())) < max(list(hap_dict[block1][1].keys())) and max(list(hap_dict[block1][1].keys())) < max(list(hap_dict[block2][1].keys()))) or (min(list(hap_dict[block2][1].keys())) < min(list(hap_dict[block1][1].keys())) and min(list(hap_dict[block1][1].keys())) < max(list(hap_dict[block2][1].keys())) and max(list(hap_dict[block2][1].keys())) < max(list(hap_dict[block1][1].keys()))):
+                        found = False
 
-                        merge_status = "overlap"
+                        for _, read_2, _ in hap_dict[block1][0][block2][2]:
 
-                    else:
+                            if read == read_2:
 
-                        merge_status = "error"
+                                found = True
 
-                    if verbosity > 1:
+                                break
 
-                        if merge_status == "within":
+                        if not found:
 
-                            if min(list(hap_dict[block1][1].keys())) < min(list(hap_dict[block2][1].keys())) and max(list(hap_dict[block2][1].keys())) < max(list(hap_dict[block1][1].keys())):
-
-                                print(f'  {block1} and {block2} seemingly come from the same haplotype and will therefore eventually be merged. {block2} is {merge_status} {block1}.', file=sys.stderr)
-
-                            elif min(list(hap_dict[block2][1].keys())) < min(list(hap_dict[block1][1].keys())) and max(list(hap_dict[block1][1].keys())) < max(list(hap_dict[block2][1].keys())):
-
-                                print(f'  {block2} and {block1} seemingly come from the same haplotype and will therefore eventually be merged. {block1} is {merge_status} {block2}.', file=sys.stderr)
+                            new_read_list.append((read_type, read, start_pos))
+                            new_read_dict.update(read_dict[read_type][read][start_pos][1].copy())
 
                         else:
 
-                            if hap_dict[block1][0][block2][0] > 0:
+                            read_dict[read_type][read][start_pos][3] = "removed"
 
-                                print(f'  {block2} secondary reads are removed because they map to {block1}', file=sys.stderr)
-                            
-                            if hap_dict[block2][0][block1][0] > 0:
+                    hap_dict[block2] = [hap_dict[block2][0], new_read_dict, new_read_list]
 
-                                print(f'  {block1} secondary reads are removed because they map to {block2}', file=sys.stderr)
+                if block1 in hap_dict[block2][0]:
 
-                            if merge_status == "error":
+                    for read_type, read, start_pos in hap_dict[block2][0][block1][2]:
 
-                                if block1 in hap_dict[block2][0]:
+                        read_dict[read_type][read][start_pos][3] = "removed"
 
-                                    for read_type, read, start_pos in hap_dict[block2][0][block1][2]:
+                    hap_dict[block2][0][block1] = [0, {}, []]
+                
+            else:
 
-                                        read_dict[read_type][read][start_pos][3] = "removed"
+                if max(list(hap_dict[block1][1].keys())) < min(list(hap_dict[block2][1].keys())) or max(list(hap_dict[block2][1].keys())) < min(list(hap_dict[block1][1].keys())):
 
-                                    hap_dict[block2][0][block1] = [0, {}, []]
+                    merge_status = "no overlap"
 
-                                if block2 in hap_dict[block1][0]:
+                elif min(list(hap_dict[block1][1].keys())) < min(list(hap_dict[block2][1].keys())) and max(list(hap_dict[block2][1].keys())) < max(list(hap_dict[block1][1].keys())) or min(list(hap_dict[block2][1].keys())) < min(list(hap_dict[block1][1].keys())) and max(list(hap_dict[block1][1].keys())) < max(list(hap_dict[block2][1].keys())):
 
-                                    for read_type, read, start_pos in hap_dict[block1][0][block2][2]:
+                    merge_status = "within"
+                
+                elif (min(list(hap_dict[block1][1].keys())) < min(list(hap_dict[block2][1].keys())) and min(list(hap_dict[block2][1].keys())) < max(list(hap_dict[block1][1].keys())) and max(list(hap_dict[block1][1].keys())) < max(list(hap_dict[block2][1].keys()))) or (min(list(hap_dict[block2][1].keys())) < min(list(hap_dict[block1][1].keys())) and min(list(hap_dict[block1][1].keys())) < max(list(hap_dict[block2][1].keys())) and max(list(hap_dict[block2][1].keys())) < max(list(hap_dict[block1][1].keys()))):
 
-                                        read_dict[read_type][read][start_pos][3] = "removed"
-
-                                    hap_dict[block1][0][block2] = [0, {}, []]
-
-                                continue
-
-                            if merge_status == "overlap":
-
-                                indel = "insertion"
-
-                            else:
-
-                                indel = "deletion"
-
-                            print(f'  {block1} and {block2} seemingly come from the same haplotype and will therefore eventually be merged. They have {merge_status} and are therefore most likely a large {indel}.', file=sys.stderr)
-
-                    if merge_status == "within":
-
-                        if len(hap_dict[block2][2]) > len(hap_dict[block1][2]):
-
-                            block1, block2 = block2, block1
-
-                        if sum([(block1, block2, merge_status) == merge_vec for merge_vec in merges]) > 0: # prevents duplicates...
-
-                            continue
-
-                        if verbosity > 1:
-
-                            print(f'  {block2} secondary reads are removed because they map to {block1}')
-                            print(f'  {block2} primary reads are removed because their secondary reads map to {block1}', file=sys.stderr)
-
-                        if block2 in hap_dict[block1][0]:
-
-                            new_read_list = []
-                            new_read_dict = {}
-
-                            for read_type, read, start_pos in hap_dict[block2][2]:
-
-                                found = False
-
-                                for _, read_2, _ in hap_dict[block1][0][block2][2]:
-
-                                    if read == read_2:
-
-                                        found = True
-
-                                        break
-
-                                if not found:
-
-                                    new_read_list.append((read_type, read, start_pos))
-                                    new_read_dict.update(read_dict[read_type][read][start_pos][1].copy())
-
-                                else:
-
-                                    read_dict[read_type][read][start_pos][3] = "removed"
-
-                            hap_dict[block2] = [hap_dict[block2][0], new_read_dict, new_read_list]
-
-                            merges.append([block1, block2, merge_status])
-
-                        if block1 in hap_dict[block2][0]:
-
-                            for read_type, read, start_pos in hap_dict[block2][0][block1][2]:
-
-                                read_dict[read_type][read][start_pos][3] = "removed"
-
-                            hap_dict[block2][0][block1] = [0, {}, []]
-
-                    else:
-
-                        for read_type, read, start_pos in hap_dict[block2][0][block1][2] + hap_dict[block1][0][block2][2]:
-
-                            read_dict[read_type][read][start_pos][3] = "ungrouped"
-
-                        del hap_dict[block2][0][block1]
-                        del hap_dict[block1][0][block2]
-
-                        merges.append([block1, block2, merge_status])
+                    merge_status = "overlap"
 
                 else:
 
-                    if len(hap_dict[block2][2]) > len(hap_dict[block1][2]):
+                    merge_status = "error"
 
-                        block1, block2 = block2, block1
+                if verbosity > 1:
 
-                    if verbosity > 1:
+                    if merge_status == "error":
 
-                        print(f'  {block2} secondary reads are removed because they map to {block1}')
-                        print(f'  {block2} primary reads are removed because their secondary reads map to {block1}', file=sys.stderr)
+                        print(f'  There is seemingly an error.', file=sys.stderr)
 
-                    if block2 in hap_dict[block1][0]:
+                        continue
 
-                        new_read_list = []
-                        new_read_dict = {}
+                    elif merge_status == "within":
 
-                        for read_type, read, start_pos in hap_dict[block2][2]:
+                        if min(list(hap_dict[block1][1].keys())) < min(list(hap_dict[block2][1].keys())) and max(list(hap_dict[block2][1].keys())) < max(list(hap_dict[block1][1].keys())):
 
-                            found = False
+                            print(f'  {block1} and {block2} seemingly come from the same haplotype and will therefore eventually be merged. {block2} is {merge_status} {block1}.', file=sys.stderr)
 
-                            for _, read_2, _ in hap_dict[block1][0][block2][2]:
+                        elif min(list(hap_dict[block2][1].keys())) < min(list(hap_dict[block1][1].keys())) and max(list(hap_dict[block1][1].keys())) < max(list(hap_dict[block2][1].keys())):
 
-                                if read == read_2:
+                            print(f'  {block2} and {block1} seemingly come from the same haplotype and will therefore eventually be merged. {block1} is {merge_status} {block2}.', file=sys.stderr)
 
-                                    found = True
+                    else:
 
-                                    break
+                        if hap_dict[block1][0][block2][0] > 0:
 
-                            if not found:
+                            print(f'  {block2} secondary reads are ungrouped because they also map to {block1}', file=sys.stderr)
+                        
+                        if hap_dict[block2][0][block1][0] > 0:
 
-                                new_read_list.append((read_type, read, start_pos))
-                                new_read_dict.update(read_dict[read_type][read][start_pos][1].copy())
+                            print(f'  {block1} secondary reads are ungrouped because they also map to {block2}', file=sys.stderr)
 
-                            else:
+                        if merge_status == "overlap":
 
-                                read_dict[read_type][read][start_pos][3] = "removed"
+                            indel = "insertion"
 
-                        hap_dict[block2] = [hap_dict[block2][0], new_read_dict, new_read_list]
+                        else:
 
-                    if block1 in hap_dict[block2][0]:
+                            indel = "deletion"
 
-                        for read_type, read, start_pos in hap_dict[block2][0][block1][2]:
+                        print(f'  {block1} and {block2} seemingly come from the same haplotype and will therefore eventually be merged. They have {merge_status} and are therefore most likely a large {indel}.', file=sys.stderr)
+                
+                for read_type, read, start_pos in hap_dict[block1][0][block2][2]+hap_dict[block2][0][block1][2]:
 
-                            read_dict[read_type][read][start_pos][3] = "removed"
+                    read_dict[read_type][read][start_pos][3] = "ungrouped"
 
-                        hap_dict[block2][0][block1] = [0, {}, []]
+                merges.append([block1, block2, merge_status, hap_dict[block1][0][block2][0]+hap_dict[block2][0][block1][0]])
 
             if verbosity > 3:
 
@@ -2995,11 +2830,391 @@ def choose_primary_or_secondary_reads(hap_dict): # Calls cleanup_hap_dict
                     print("\t", block1, len(hap_dict[block1][2]), [(hap, hap_dict[block1][0][hap][0]) for hap in hap_dict[block1][0]], file=sys.stderr)
                     print("\t", block2, len(hap_dict[block2][2]), [(hap, hap_dict[block2][0][hap][0]) for hap in hap_dict[block2][0]], file=sys.stderr)
 
-    for block in hap_dict:
-
-        cleanup_hap_dict(hap_dict, block)
-
     return hap_dict, merges
+
+# def choose_primary_or_secondary_reads(hap_dict): # Calls cleanup_hap_dict
+
+#     if verbosity > 0:
+
+#         print("\n\nChoosing between the primary or a secondary alignment for each read.\n", file=sys.stderr)
+
+#     merges = []
+#     compared_pairs = []
+
+#     for hap in list(haploblock_dict.keys()):
+
+#         block1 = hap
+
+#         if len(hap_dict[block1][2]) == 0 or sum([hap_dict[block1][0][hap][0] for hap in hap_dict[block1][0]]) == 0 or (len(hap_dict[block1][0]) == 1 and "ungrouped" in hap_dict[block1][0]):
+
+#             continue
+
+#         if verbosity > 1:
+
+#             print(f"Evaluating {block1}", file=sys.stderr)
+
+#         if verbosity > 3:
+
+#             print("\t", block1, len(hap_dict[block1][2]), [(hap, hap_dict[block1][0][hap][0]) for hap in hap_dict[block1][0]], file=sys.stderr)
+
+#         for block2 in list(hap_dict[block1][0].keys()):
+
+#             block1 = hap
+
+#             # if block2 not in haploblock_dict:
+
+#             #     continue
+
+#             if len(hap_dict[block2][2]) == 0 and sum([hap_dict[block2][0][hap][0] for hap in hap_dict[block2][0]]) == 0:
+
+#                 continue
+
+#             if f'{block1}_{block2}' in compared_pairs or f'{block2}_{block1}' in compared_pairs:
+
+#                 continue
+            
+#             else:
+
+#                 compared_pairs.append(f'{block1}_{block2}')
+
+#             # If the secondary reads have already been removed in the lone clean process
+
+#             if hap_dict[block1][0][block2][0] == 0:
+
+#                 continue
+
+#             if "ungrouped" in hap_dict[block2][0]:
+
+#                 if len(hap_dict[block2][2]) == 0 and sum([hap_dict[block2][0][hap][0] for hap in hap_dict[block2][0]]) == hap_dict[block2][0]["ungrouped"][0]:
+
+#                     continue
+
+#             if verbosity > 1:
+
+#                 if block1 == block2:
+
+#                     print(f" Both the primary and secondary reads map to {block1}", file=sys.stderr)
+
+#                 else:
+
+#                     print(f" Comparing {block1} and {block2}", file=sys.stderr)
+
+#             if verbosity > 3:
+
+#                 if block1 == block2:
+
+#                     print("\t", block1, len(hap_dict[block1][2]), [(hap, hap_dict[block1][0][hap][0]) for hap in hap_dict[block1][0]])
+
+#                 else:
+
+#                     print("\t", block1, len(hap_dict[block1][2]), [(hap, hap_dict[block1][0][hap][0]) for hap in hap_dict[block1][0]], file=sys.stderr)
+#                     print("\t", block2, len(hap_dict[block2][2]), [(hap, hap_dict[block2][0][hap][0]) for hap in hap_dict[block2][0]], file=sys.stderr)
+
+#             if block1 == block2: # FIXME: test
+
+#                 removed_reads = []
+
+#                 block_min = min(haploblock_dict[block1][0])
+#                 block_max = max(haploblock_dict[block1][0])
+
+#                 for _, read, start_pos in hap_dict[block1][0][block1][2]:
+
+#                     # print((min(read_dict["p"][read]["-"][2])-block_min, block_max-max(read_dict["p"][read]["-"][2])), [(min(read_dict["s"][read][start_pos][2])-block_min, block_max-max(read_dict["s"][read][start_pos][2])) for start_pos in read_dict["s"][read]], min(haploblock_dict[block1][0]), max(haploblock_dict[block1][0]))
+#                     # print(min(min(read_dict["p"][read]["-"][2])-block_min, block_max-max(read_dict["p"][read]["-"][2])), [min(min(read_dict["s"][read][start_pos][2])-block_min, block_max-max(read_dict["s"][read][start_pos][2])) for start_pos in read_dict["s"][read]], min(haploblock_dict[block1][0]), max(haploblock_dict[block1][0]))
+
+#                     if min(min(read_dict["p"][read]["-"][2])-block_min, block_max-max(read_dict["p"][read]["-"][2])) < min(min(read_dict["s"][read][start_pos][2])-block_min, block_max-max(read_dict["s"][read][start_pos][2])):
+
+#                         # print("s")
+
+#                         removed_reads.append(f'{"p"}_{read}_{"-"}')
+                    
+#                     else:
+
+#                         # print("p")
+
+#                         removed_reads.append(f'{"s"}_{read}_{start_pos}')
+                
+#                 print(removed_reads)
+                
+#                 new_read_dict = {}
+#                 new_read_list = []
+
+#                 for read_type, read, start_pos in hap_dict[block1][0][block1][2]:
+
+#                     print("\n")
+#                     print(read_type, read, start_pos)
+#                     print(read_dict["p"][read]["-"][3], [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]])
+
+#                     if f'{read_type}_{read}_{start_pos}' in removed_reads:
+
+#                         read_dict[read_type][read][start_pos][3] = "removed"
+                    
+#                     else:
+                        
+#                         new_read_dict.update(read_dict[read_type][read][start_pos][2].copy())
+#                         new_read_list.append((read_type, read, start_pos))
+
+#                     print(read_dict["p"][read]["-"][3], [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]])
+
+#                 hap_dict[block1][0][block1][0] = len(new_read_list)
+#                 hap_dict[block1][0][block1][1] = new_read_dict
+#                 hap_dict[block1][0][block1][2] = new_read_list
+
+#                 if "ungrouped" in hap_dict[block1][0]:
+
+#                     for read_type, read, start_pos in hap_dict[block1][0]["ungrouped"][2]:
+
+#                         read_dict[read_type][read][start_pos][3] = "ungrouped"
+
+#                     hap_dict[block1][0]["ungrouped"] = [0, {}, []]
+                
+#                 new_read_dict = {}
+#                 new_read_list = []
+
+#                 for read_type, read, start_pos in hap_dict[block1][2]:
+
+#                     if read in read_dict["s"]:
+
+#                         print("\n")
+#                         print(read_type, read, start_pos)
+#                         print(read_dict["p"][read]["-"][3], [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]])
+
+#                     if f'{read_type}_{read}_{start_pos}' in removed_reads:
+
+#                         read_dict[read_type][read][start_pos][3] = "removed"
+                    
+#                     elif read in read_dict["s"] and "ungrouped" in [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]]: # FIXME: test. This is added because if the secondary read is ungrouped because it ambigously maps to more than one read, there is no way to know if the secondary read is correct. Therefore the primary read is ungrouped.
+
+#                         read_dict[read_type][read][start_pos][3] = "ungrouped"
+                    
+#                     else:
+                        
+#                         new_read_dict.update(read_dict[read_type][read][start_pos][2].copy())
+#                         new_read_list.append((read_type, read, start_pos))
+
+#                     if read in read_dict["s"]:
+
+#                         print(read_dict["p"][read]["-"][3], [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]])
+
+#                 hap_dict[block1][1] = new_read_dict
+#                 hap_dict[block1][2] = new_read_list
+
+#                 # for _, read, start_pos in hap_dict[block1][0][block1][2]:
+
+#                 #     print(read_dict["p"][read]["-"][3], read_dict["s"][read][start_pos][3])
+
+#                 # for _, read, _ in hap_dict[block1][2]:
+
+#                 #     if read in read_dict["s"]:
+
+#                 #         print(read_dict["p"][read]["-"][3], [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]])
+            
+#             else:
+
+#                 if len(hap_dict[block2][2])-hap_dict[block1][0][block2][0] >= minimum_coverage and block1 not in hap_dict[block2][0]:
+
+#                     hap_dict[block2][0][block1] = [0, {}, []]
+
+#                 # print(block2 in hap_dict[block1][0], block1 in hap_dict[block2][0], len(hap_dict[block1][2])-hap_dict[block2][0][block1][0] >= minimum_coverage, len(hap_dict[block2][2]) - hap_dict[block1][0][block2][0] >= minimum_coverage)
+
+#                 if block2 in hap_dict[block1][0] and block1 in hap_dict[block2][0] and len(hap_dict[block1][2])-hap_dict[block2][0][block1][0] >= minimum_coverage and len(hap_dict[block2][2]) - hap_dict[block1][0][block2][0] >= minimum_coverage and hap_dict[block1][0][block2][0] + hap_dict[block2][0][block1][0] >= minimum_coverage:
+#                 # if block2 in hap_dict[block1][0] and block1 in hap_dict[block2][0] and len(hap_dict[block1][2])-hap_dict[block2][0][block1][0] >= minimum_coverage and len(hap_dict[block2][2]) - hap_dict[block1][0][block2][0] >= minimum_coverage:
+
+#                     if max(list(hap_dict[block1][1].keys())) < min(list(hap_dict[block2][1].keys())) or max(list(hap_dict[block2][1].keys())) < min(list(hap_dict[block1][1].keys())):
+
+#                         merge_status = "no overlap"
+
+#                     elif min(list(hap_dict[block1][1].keys())) < min(list(hap_dict[block2][1].keys())) and max(list(hap_dict[block2][1].keys())) < max(list(hap_dict[block1][1].keys())) or min(list(hap_dict[block2][1].keys())) < min(list(hap_dict[block1][1].keys())) and max(list(hap_dict[block1][1].keys())) < max(list(hap_dict[block2][1].keys())):
+
+#                         merge_status = "within"
+                    
+#                     elif (min(list(hap_dict[block1][1].keys())) < min(list(hap_dict[block2][1].keys())) and min(list(hap_dict[block2][1].keys())) < max(list(hap_dict[block1][1].keys())) and max(list(hap_dict[block1][1].keys())) < max(list(hap_dict[block2][1].keys()))) or (min(list(hap_dict[block2][1].keys())) < min(list(hap_dict[block1][1].keys())) and min(list(hap_dict[block1][1].keys())) < max(list(hap_dict[block2][1].keys())) and max(list(hap_dict[block2][1].keys())) < max(list(hap_dict[block1][1].keys()))):
+
+#                         merge_status = "overlap"
+
+#                     else:
+
+#                         merge_status = "error"
+
+#                     if verbosity > 1:
+
+#                         if merge_status == "within":
+
+#                             if min(list(hap_dict[block1][1].keys())) < min(list(hap_dict[block2][1].keys())) and max(list(hap_dict[block2][1].keys())) < max(list(hap_dict[block1][1].keys())):
+
+#                                 print(f'  {block1} and {block2} seemingly come from the same haplotype and will therefore eventually be merged. {block2} is {merge_status} {block1}.', file=sys.stderr)
+
+#                             elif min(list(hap_dict[block2][1].keys())) < min(list(hap_dict[block1][1].keys())) and max(list(hap_dict[block1][1].keys())) < max(list(hap_dict[block2][1].keys())):
+
+#                                 print(f'  {block2} and {block1} seemingly come from the same haplotype and will therefore eventually be merged. {block1} is {merge_status} {block2}.', file=sys.stderr)
+
+#                         else:
+
+#                             if hap_dict[block1][0][block2][0] > 0:
+
+#                                 print(f'  {block2} secondary reads are removed because they map to {block1}', file=sys.stderr)
+                            
+#                             if hap_dict[block2][0][block1][0] > 0:
+
+#                                 print(f'  {block1} secondary reads are removed because they map to {block2}', file=sys.stderr)
+
+#                             if merge_status == "error":
+
+#                                 if block1 in hap_dict[block2][0]:
+
+#                                     for read_type, read, start_pos in hap_dict[block2][0][block1][2]:
+
+#                                         read_dict[read_type][read][start_pos][3] = "ungrouped"
+
+#                                     hap_dict[block2][0][block1] = [0, {}, []]
+
+#                                 if block2 in hap_dict[block1][0]:
+
+#                                     for read_type, read, start_pos in hap_dict[block1][0][block2][2]:
+
+#                                         read_dict[read_type][read][start_pos][3] = "ungrouped"
+
+#                                     hap_dict[block1][0][block2] = [0, {}, []]
+
+#                                 continue
+
+#                             if merge_status == "overlap":
+
+#                                 indel = "insertion"
+
+#                             else:
+
+#                                 indel = "deletion"
+
+#                             print(f'  {block1} and {block2} seemingly come from the same haplotype and will therefore eventually be merged. They have {merge_status} and are therefore most likely a large {indel}.', file=sys.stderr)
+
+#                     if merge_status == "within":
+
+#                         if len(hap_dict[block2][2]) > len(hap_dict[block1][2]):
+
+#                             block1, block2 = block2, block1
+
+#                         if sum([(block1, block2, merge_status) == merge_vec for merge_vec in merges]) > 0: # prevents duplicates...
+
+#                             continue
+
+#                         if verbosity > 1:
+
+#                             print(f'  {block2} secondary reads are removed because they map to {block1}')
+#                             print(f'  {block2} primary reads are removed because their secondary reads map to {block1}', file=sys.stderr)
+
+#                         if block2 in hap_dict[block1][0]:
+
+#                             new_read_list = []
+#                             new_read_dict = {}
+
+#                             for read_type, read, start_pos in hap_dict[block2][2]:
+
+#                                 found = False
+
+#                                 for _, read_2, _ in hap_dict[block1][0][block2][2]:
+
+#                                     if read == read_2:
+
+#                                         found = True
+
+#                                         break
+
+#                                 if not found:
+
+#                                     new_read_list.append((read_type, read, start_pos))
+#                                     new_read_dict.update(read_dict[read_type][read][start_pos][1].copy())
+
+#                                 else:
+
+#                                     read_dict[read_type][read][start_pos][3] = "removed"
+
+#                             hap_dict[block2] = [hap_dict[block2][0], new_read_dict, new_read_list]
+
+#                             merges.append([block1, block2, merge_status])
+
+#                         if block1 in hap_dict[block2][0]:
+
+#                             for read_type, read, start_pos in hap_dict[block2][0][block1][2]:
+
+#                                 read_dict[read_type][read][start_pos][3] = "removed"
+
+#                             hap_dict[block2][0][block1] = [0, {}, []]
+
+#                     else:
+
+#                         for read_type, read, start_pos in hap_dict[block2][0][block1][2] + hap_dict[block1][0][block2][2]:
+
+#                             read_dict[read_type][read][start_pos][3] = "ungrouped"
+
+#                         del hap_dict[block2][0][block1]
+#                         del hap_dict[block1][0][block2]
+
+#                         merges.append([block1, block2, merge_status])
+
+#                 else:
+
+#                     if len(hap_dict[block2][2]) > len(hap_dict[block1][2]):
+
+#                         block1, block2 = block2, block1
+
+#                     if verbosity > 1:
+
+#                         print(f'  {block2} secondary reads are removed because they map to {block1}')
+#                         print(f'  {block2} primary reads are removed because their secondary reads map to {block1}', file=sys.stderr)
+
+#                     if block2 in hap_dict[block1][0]:
+
+#                         new_read_list = []
+#                         new_read_dict = {}
+
+#                         for read_type, read, start_pos in hap_dict[block2][2]:
+
+#                             found = False
+
+#                             for _, read_2, _ in hap_dict[block1][0][block2][2]:
+
+#                                 if read == read_2:
+
+#                                     found = True
+
+#                                     break
+
+#                             if not found:
+
+#                                 new_read_list.append((read_type, read, start_pos))
+#                                 new_read_dict.update(read_dict[read_type][read][start_pos][1].copy())
+
+#                             else:
+
+#                                 read_dict[read_type][read][start_pos][3] = "removed"
+
+#                         hap_dict[block2] = [hap_dict[block2][0], new_read_dict, new_read_list]
+
+#                     if block1 in hap_dict[block2][0]:
+
+#                         for read_type, read, start_pos in hap_dict[block2][0][block1][2]:
+
+#                             read_dict[read_type][read][start_pos][3] = "removed"
+
+#                         hap_dict[block2][0][block1] = [0, {}, []]
+
+#             if verbosity > 3:
+
+#                 if block1 == block2:
+
+#                     print("\t", block1, len(hap_dict[block1][2]), [(hap, hap_dict[block1][0][hap][0]) for hap in hap_dict[block1][0]], file=sys.stderr)
+
+#                 else:
+
+#                     print("\t", block1, len(hap_dict[block1][2]), [(hap, hap_dict[block1][0][hap][0]) for hap in hap_dict[block1][0]], file=sys.stderr)
+#                     print("\t", block2, len(hap_dict[block2][2]), [(hap, hap_dict[block2][0][hap][0]) for hap in hap_dict[block2][0]], file=sys.stderr)
+
+#     for block in hap_dict:
+
+#         cleanup_hap_dict(hap_dict, block)
+
+#     return hap_dict, merges
 
 def cleanup_low_depth_reads(hap_dict, not_unique_list): # Calls reintroduce_read_to_variant_dict and cleanup_hap_dict
 
@@ -3216,13 +3431,13 @@ def cleanup_low_depth_reads(hap_dict, not_unique_list): # Calls reintroduce_read
                     read_dict["s"][read][start_pos][3] = "ungrouped"
                     not_unique_list.append(("s", read, start_pos))
 
-        cleanup_hap_dict(hap_dict, block)
+        # cleanup_hap_dict(hap_dict, block)
 
         if verbosity > 3:
 
             print("\t", block, len(hap_dict[block][2]), [(hap, hap_dict[block][0][hap][0]) for hap in hap_dict[block][0]], file=sys.stderr)
 
-def update_haploblock_dict(hap_dict, merged_list, haploblock_dict):
+def update_haploblock_dict(hap_dict, merges, haploblock_dict):
 
     if verbosity > 0:
 
@@ -3238,7 +3453,7 @@ def update_haploblock_dict(hap_dict, merged_list, haploblock_dict):
 
                 del haploblock_dict[block]
 
-            merged_list = update_merge_list(block, block, haploblock_dict, merged_list)
+            # merged_list = update_merge_list(block, block, haploblock_dict, merged_list)
 
             continue
 
@@ -3278,7 +3493,79 @@ def update_haploblock_dict(hap_dict, merged_list, haploblock_dict):
 
         # print(block, len(hap_dict[block][2]), [(hap, hap_dict[block][0][hap][0]) for hap in hap_dict[block][0]], len(new_read_list), file=sys.stderr)
 
-    return merged_list
+    print(merges, file=sys.stderr)
+
+    i = 0
+
+    while i < len(merges):
+
+        removed = False
+
+        block1 = merges[i][0]
+        block2 = merges[i][1]
+
+        if block1 not in haploblock_dict or block2 not in haploblock_dict:
+
+            del merges[i]
+
+            continue
+
+        for j in range(i+1, len(merges)):
+
+            block1 = merges[j][0]
+            block2 = merges[j][1]
+
+            if block1 not in haploblock_dict or block2 not in haploblock_dict:
+
+                del merges[j]
+
+                break
+
+            if block1 in merges[i] or block2 in merges[i]:
+
+                removed = True
+
+                if merges[i][3] < merges[j][3]:
+
+                    merges[i] = merges[j]
+
+                    del merges[j]
+
+                    break
+                
+                else:
+
+                    del merges[j]
+
+                    break
+        
+        if not removed:
+
+            i += 1
+    
+    print(merges, file=sys.stderr)
+
+    merge_list = []
+
+    for hap1, hap2, merge_status, _ in merges:
+
+        print(hap1, hap2, merge_status, file=sys.stderr)
+
+        if min(haploblock_dict[hap1][0]) < min(haploblock_dict[hap2][0]) and max(haploblock_dict[hap2][0]) < max(haploblock_dict[hap1][0]) or min(haploblock_dict[hap1][0]) < min(haploblock_dict[hap2][0]) and max(haploblock_dict[hap1][0]) < max(haploblock_dict[hap2][0]):
+
+            merge_list.append([hap1, hap2, merge_status])
+
+        elif min(haploblock_dict[hap2][0]) < min(haploblock_dict[hap1][0]) and max(haploblock_dict[hap1][0]) < max(haploblock_dict[hap2][0]) or min(haploblock_dict[hap2][0]) < min(haploblock_dict[hap1][0]) and max(haploblock_dict[hap2][0]) < max(haploblock_dict[hap1][0]):
+
+            merge_list.append([hap2, hap1, merge_status])
+
+        else:
+
+            print("Something has gone wrong...", file=sys.stderr)
+
+    print(merge_list, file=sys.stderr)
+
+    return merge_list
 
 def update_merge_list(hap1, hap2, haploblock_dict, merged_list):
 
@@ -3287,7 +3574,6 @@ def update_merge_list(hap1, hap2, haploblock_dict, merged_list):
     i = 0
 
     while i < len(merged_list):
-    # for i in range(len(merged_list)):
 
         merged = False
 
@@ -3458,6 +3744,8 @@ def reevaluate_ungrouped_primary_and_secondary_reads(haploblock_dict): # Calls r
 
         if read in read_dict["s"]:
 
+            print("\n", file=sys.stderr)
+
             print(read, (len(read_dict["p"][read]["-"][2]), read_dict["p"][read]["-"][3]), [(len(read_dict["s"][read][start_pos][2]), read_dict["s"][read][start_pos][3]) for start_pos in read_dict["s"][read]], file=sys.stderr)
 
             groups = set([read_dict["p"][read]["-"][3]] + [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]])
@@ -3465,6 +3753,8 @@ def reevaluate_ungrouped_primary_and_secondary_reads(haploblock_dict): # Calls r
             # Makes sure all reads have usable SNPs. If one doesn't it could give a bad result.
                     
             if len(read_dict["p"][read]["-"][2]) == 0 or sum([len(read_dict["s"][read][start_pos][2]) == 0 for start_pos in read_dict["s"][read]]) > 0:
+
+                print("Enters 1")
 
                 if read_dict["p"][read]["-"][3] != "removed":
 
@@ -3483,18 +3773,6 @@ def reevaluate_ungrouped_primary_and_secondary_reads(haploblock_dict): # Calls r
                     else:
 
                         read_dict["p"][read]["-"][3] = "unchosen"
-
-                    # if "block" in read_dict["p"][read]["-"][3]:
-                    
-                    #     block = read_dict["p"][read]["-"][3]
-
-                    #     for i in range(len(haploblock_dict[block][1])):
-
-                    #         if ("p",read,"-") == haploblock_dict[block][1][i]:
-
-                    #             del haploblock_dict[block][1][i]
-
-                    #             break
 
                 for start_pos in read_dict["s"][read]:
 
@@ -3515,18 +3793,6 @@ def reevaluate_ungrouped_primary_and_secondary_reads(haploblock_dict): # Calls r
                         else:
 
                             read_dict["s"][read][start_pos][3] = "unchosen"
-
-                        # if "block" in read_dict["s"][read][start_pos][3]:
-                        
-                        #     block = read_dict["s"][read][start_pos][3]
-
-                        #     for i in range(len(haploblock_dict[block][1])):
-
-                        #         if ("s",read,start_pos) == haploblock_dict[block][1][i]:
-
-                        #             del haploblock_dict[block][1][i]
-
-                        #             break
                 
                 groups = set([read_dict["p"][read]["-"][3]] + [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]])
                 
@@ -3534,19 +3800,60 @@ def reevaluate_ungrouped_primary_and_secondary_reads(haploblock_dict): # Calls r
 
                     unchosen_list.append(read)
 
-                print((len(read_dict["p"][read]["-"][2]), read_dict["p"][read]["-"][3]), [(len(read_dict["s"][read][start_pos][2]), read_dict["s"][read][start_pos][3]) for start_pos in read_dict["s"][read]], file=sys.stderr)
+            elif "removed" in groups:
 
-                print("\n", file=sys.stderr)
+                print("Enters 2")
 
-                continue
+                possible_reads = []
+
+                if read_dict["p"][read]["-"][3] != "removed":
+
+                    possible_reads.append(("p", read, "-"))
                 
-            groups = set([read_dict["p"][read]["-"][3]] + [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]])
+                for start_pos in read_dict["s"][read]:
 
-            if sum(["block" in group or group == "removed" for group in groups]) != len(groups):
+                    if read_dict["s"][read][start_pos][3] != "removed":
 
-                print("\n")
+                        possible_reads.append(("s", read, start_pos))
 
-                print([read_dict["p"][read]["-"][3]], [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]], sum(["block" in group for group in groups]), file=sys.stderr)
+                if len(possible_reads) == 1:
+
+                    read_type, read, start_pos = possible_reads[0]
+
+                    read_variant_dict = read_dict[read_type][read][start_pos][2]
+
+                    fit_list = make_fit_list(read_variant_dict, haploblock_dict, 0, 1)
+
+                    print(fit_list, file=sys.stderr)
+
+                    if len(fit_list) == 1:
+
+                        block = fit_list[0][0]
+
+                        if read_dict[read_type][read][start_pos][3] == "ungrouped":
+
+                            add_read_to_haploblock(read_type, read, start_pos, block, fit_list[0][3], haploblock_dict)
+                        
+                        elif read_dict[read_type][read][start_pos][3] != block:
+
+                            print("If this prints, something is wrong")
+                    
+                    else:
+
+                        reintroduce_read_to_variant_dict(read_type, read, start_pos)
+                        new_not_unique_list.append((read_type, read, start_pos))
+
+                else:
+
+                    # FIXME: not sure what we might miss here... it is not very common to have more than 2 mappings
+
+                    for read_type, read, start_pos in possible_reads:
+
+                        read_dict[read_type][read][start_pos][3] = "unchosen"
+
+            elif sum(["block" in group or group == "removed" for group in groups]) != len(groups):
+
+                print("Enters 3")
 
                 fit_lists = []
 
@@ -3637,11 +3944,9 @@ def reevaluate_ungrouped_primary_and_secondary_reads(haploblock_dict): # Calls r
 
                     unchosen_list.append(read)
 
-                groups = set([read_dict["p"][read]["-"][3]] + [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]])
+            groups = set([read_dict["p"][read]["-"][3]] + [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]])
 
-                print([read_dict["p"][read]["-"][3]], [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]], sum(["block" in group for group in groups]), file=sys.stderr)
-
-                print("\n", file=sys.stderr)
+            print([read_dict["p"][read]["-"][3]], [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]], sum(["block" in group for group in groups]), file=sys.stderr)
         
         elif read_dict["p"][read]["-"][3] == "ungrouped":
 
@@ -3650,80 +3955,11 @@ def reevaluate_ungrouped_primary_and_secondary_reads(haploblock_dict): # Calls r
 
     return unchosen_list, new_not_unique_list
 
-def update_merges(merges):
+def update_merges(merge_list, haploblock_dict):
 
     if verbosity > 0:
 
         print("\n\nModify the blocks that should be merged.\n", file=sys.stderr)
-
-    print(merges, file=sys.stderr)
-
-    merge_list = []
-
-    seen_blocks = []
-
-    for hap1, hap2, merge_status in merges:
-
-        print(hap1, hap2, merge_status)
-
-        if hap1 not in haploblock_dict or hap2 not in haploblock_dict: # FIXME: test
-
-            continue
-
-        if len(haploblock_dict[hap1][0]) == 0 or len(haploblock_dict[hap2][0]) == 0: #FIXME: test
-
-            continue
-        
-        if min(haploblock_dict[hap1][0]) < min(haploblock_dict[hap2][0]) and max(haploblock_dict[hap2][0]) < max(haploblock_dict[hap1][0]):
-
-            merge_list.append([hap1, hap2, merge_status])
-
-            continue
-
-        elif min(haploblock_dict[hap2][0]) < min(haploblock_dict[hap1][0]) and max(haploblock_dict[hap1][0]) < max(haploblock_dict[hap2][0]):
-
-            merge_list.append([hap2, hap1, merge_status])
-
-            continue
-
-        if max(haploblock_dict[hap1][0]) < max(haploblock_dict[hap2][0]):
-
-            left_hap = hap1
-            right_hap = hap2
-
-        else:
-
-            left_hap = hap2
-            right_hap = hap1
-        
-        if left_hap in seen_blocks or right_hap in seen_blocks:
-
-            for i in range(len(merge_list)):
-
-                block1 = merge_list[i][0]
-                block2 = merge_list[i][-2]
-                merge_status = merge_list[i][-1]
-
-                print(block1, right_hap, block2, left_hap)
-
-                if block2 == right_hap and merge_status != "within":
-
-                    merge_list[i] = merge_list[i][:len(merge_list[i])-1] + [right_hap, "multiple"]
-                
-                elif block1 == left_hap and merge_status != "within":
-
-                    merge_list[i] = [left_hap] + merge_list[i]
-
-            print(merge_list, file=sys.stderr)
-        
-        else:
-
-            merge_list.append([left_hap, right_hap, merge_status])
-
-        seen_blocks.append(hap1)
-        seen_blocks.append(hap2)
-
-    print(merge_list, file=sys.stderr)
 
     for i in range(len(merge_list)):
 
@@ -3750,8 +3986,6 @@ def update_merges(merges):
             for j in range(1, len(merge_list[i])-2):
 
                 middle_hap = merge_list[i][j]
-
-                # print(middle_hap)
 
                 middle_max = max(haploblock_dict[middle_hap][0])
                 middle_min = min(haploblock_dict[middle_hap][0])
@@ -3780,10 +4014,13 @@ def update_merges(merges):
 def evaluate_unchosen_list(unchosen_list, haploblock_dict, not_unique_list): # Calls add_to_fit_lists
 
     new_unchosen_list = []
+    match_dict = {}
 
     for read in unchosen_list:
 
-        # print(read, [(read_dict["p"][read]["-"][3],len(read_dict["p"][read]["-"][2]))], [(read_dict["s"][read][start_pos][3], len(read_dict["s"][read][start_pos][2])) for start_pos in read_dict["s"][read]],  file=sys.stderr)
+        print("\n", file=sys.stderr)
+
+        print(read, [(read_dict["p"][read]["-"][3],len(read_dict["p"][read]["-"][2]))], [(read_dict["s"][read][start_pos][3], len(read_dict["s"][read][start_pos][2])) for start_pos in read_dict["s"][read]],  file=sys.stderr)
         
         if len(read_dict["p"][read]["-"][2]) == 0 or sum([len(read_dict["s"][read][start_pos][2]) == 0 for start_pos in read_dict["s"][read]]) > 0:
 
@@ -3802,53 +4039,11 @@ def evaluate_unchosen_list(unchosen_list, haploblock_dict, not_unique_list): # C
 
             add_to_fit_lists(read_type, read, start_pos, fit_lists, diff, haploblock_dict)
 
-            # if len(fit_lists[-1][1]) == 2:
-
-            #     fit_list = fit_lists.pop()
-
-            #     block1 = fit_list[1][0][0]
-            #     block2 = fit_list[1][1][0]
-
-            #     overlap, identity, mismatch_list = compare_haploblocks(block1, block2, haploblock_dict)
-
-            #     print(fit_list, overlap, identity)
-
-            #     if overlap == identity:
-
-            #         if verbosity > 2:
-
-            #             print(f"The overlap between {block1} and {block2} is {overlap}, the identity is {identity} and a read overlaps both, so the two blocks are merged.", file=sys.stderr)
-
-            #         merge_haploblocks(block1, block2, mismatch_list, haploblock_dict)
-
-            #     add_to_fit_lists(read_type, read, start_pos, fit_lists, diff, haploblock_dict)
-
             for start_pos in read_dict["s"][read]:
                     
                 read_type = "s"
 
                 add_to_fit_lists(read_type, read, start_pos, fit_lists, diff, haploblock_dict)
-
-                # if len(fit_lists[-1][1]) == 2:
-
-                #     fit_list = fit_lists.pop()
-
-                #     print(fit_list)
-
-                #     block1 = fit_list[1][0][0]
-                #     block2 = fit_list[1][1][0]
-
-                #     overlap, identity, mismatch_list = compare_haploblocks(block1, block2, haploblock_dict)
-
-                #     if overlap == identity:
-
-                #         if verbosity > 2:
-
-                #             print(f"The overlap between {block1} and {block2} is {overlap}, the identity is {identity} and a read overlaps both, so the two blocks are merged.", file=sys.stderr)
-
-                #         merge_haploblocks(block1, block2, mismatch_list, haploblock_dict)
-
-                #     add_to_fit_lists(read_type, read, start_pos, fit_lists, diff, haploblock_dict)
             
             if len(fit_lists) > 0 or diff == maxdiff:
 
@@ -3936,11 +4131,50 @@ def evaluate_unchosen_list(unchosen_list, haploblock_dict, not_unique_list): # C
 
         else:
 
-            new_unchosen_list.append(read)
-        
-        # groups = set([read_dict["p"][read]["-"][3]] + [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]])
+            if len(fit_lists) == 2:
 
-        # print([read_dict["p"][read]["-"][3]], [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]], file=sys.stderr)
+                match_list = []
+
+                for i in range(len(fit_lists[0][1])):
+                    for j in range(len(fit_lists[1][1])):
+
+                        block1 = fit_lists[0][1][i][0]
+                        block2 = fit_lists[1][1][j][0]
+
+                        if block1 == block2 or f'{block1}_{block2}' in match_list or f'{block2}_{block1}' in match_list:
+
+                            continue
+
+                        else:
+
+                            match_list = f'{block1}_{block2}'
+
+                        if block1 in match_dict and block2 in match_dict[block1]:
+
+                            match_dict[block1][block2] += 1
+                        
+                        elif block2 in match_dict and block1 in match_dict[block2]:
+
+                            match_dict[block2][block1] += 1
+                        
+                        elif block1 in match_dict and block2 not in match_dict[block1]:
+
+                            match_dict[block1][block2] = 1
+                        
+                        elif block2 in match_dict and block1 not in match_dict[block2]:
+
+                            match_dict[block2][block1] = 1
+                        
+                        else:
+
+                            match_dict[block1] = {}
+                            match_dict[block1][block2] = 1
+
+            new_unchosen_list.append(read)
+
+        print([read_dict["p"][read]["-"][3]], [read_dict["s"][read][start_pos][3] for start_pos in read_dict["s"][read]], file=sys.stderr)
+    
+    print(match_dict)
 
     return new_unchosen_list
 
@@ -4029,7 +4263,7 @@ def reevaluate_secondary_reads(not_unique_list, haploblock_dict): # Calls make_h
 
     unchosen_list, not_unique_list = reevaluate_ungrouped_primary_and_secondary_reads(haploblock_dict)
 
-    merge_list = update_merges(merges)
+    merge_list = update_merges(merges, haploblock_dict)
 
     while True:
 
@@ -4497,8 +4731,21 @@ def create_haplo_variant_dict(): # Calls get_reference_sequence, make_fit_list a
                 else:
 
                     alt_base = pileupread.alignment.query_sequence[pileupread.query_position]
+            
+            if len(haploblock_dict) == 0:
 
-            if hap_name in ["ungrouped", "unchosen"]:
+                add_base_to_haplo_variant_dict(pos, alt_base, hap_name, haplo_variant_dict)
+            
+            # elif hap_name == "unphasable" or hap_name == "unchosen" and len(read_dict[read_type][read_name][start_pos][2]) == 0:
+            elif hap_name == "unphasable":
+
+                for hap in haploblock_dict:
+
+                    if hap_unphasale_range[hap][0] <= pos and pos <= hap_unphasale_range[hap][1]:
+
+                        add_base_to_haplo_variant_dict(pos, alt_base, hap, haplo_variant_dict)
+
+            elif hap_name in ["ungrouped", "unchosen"]:
 
                 read_variant_dict = read_dict[read_type][read_name][start_pos][2]
 
@@ -4507,18 +4754,6 @@ def create_haplo_variant_dict(): # Calls get_reference_sequence, make_fit_list a
                 for i in range(len(fit_list)):
 
                     add_base_to_haplo_variant_dict(pos, alt_base, fit_list[i][0], haplo_variant_dict)
-            
-            elif len(haploblock_dict) == 0:
-
-                add_base_to_haplo_variant_dict(pos, alt_base, hap_name, haplo_variant_dict)
-
-            elif hap_name == "unphasable":
-
-                for hap in haploblock_dict:
-
-                    if hap_unphasale_range[hap][0] <= pos and pos <= hap_unphasale_range[hap][1]:
-
-                        add_base_to_haplo_variant_dict(pos, alt_base, hap, haplo_variant_dict)
             
             else:
 
@@ -4580,63 +4815,63 @@ def make_haplotype_consensus_sequence(haplo_dict, outfile_name, unchosen_list): 
         seen_haplotypes.append(left_hap)
         seen_haplotypes.append(right_hap)
 
-        print("\n\n", file=sys.stderr)
-        print(left_hap, right_hap, merge_status, file=sys.stderr)
+        # print("\n\n", file=sys.stderr)
+        # print(left_hap, right_hap, merge_status, file=sys.stderr)
 
-        overlap_list = []
-        overlap_dict = {}
-        overlap = minimum_overlap
+        # overlap_list = []
+        # overlap_dict = {}
+        # overlap = minimum_overlap
 
-        while overlap < min([len(haplo_asm[left_hap]["asm"]), len(haplo_asm[right_hap]["asm"])]):
+        # while overlap < min([len(haplo_asm[left_hap]["asm"]), len(haplo_asm[right_hap]["asm"])]):
 
-            left_flank = haplo_asm[left_hap]["asm"][len(haplo_asm[left_hap]["asm"])-overlap:]
-            right_flank = haplo_asm[right_hap]["asm"][:overlap]
+        #     left_flank = haplo_asm[left_hap]["asm"][len(haplo_asm[left_hap]["asm"])-overlap:]
+        #     right_flank = haplo_asm[right_hap]["asm"][:overlap]
 
-            longest_running_overlap = 0
-            running_overlap = 0
-            identity = 0
-            start_idx = None
-            idxs_list = []
+        #     longest_running_overlap = 0
+        #     running_overlap = 0
+        #     identity = 0
+        #     start_idx = None
+        #     idxs_list = []
 
-            # print(overlap, file=sys.stderr)
-            # print(left_flank, file=sys.stderr)
-            # print(right_flank, file=sys.stderr)
+        #     # print(overlap, file=sys.stderr)
+        #     # print(left_flank, file=sys.stderr)
+        #     # print(right_flank, file=sys.stderr)
 
-            for i in range(overlap):
+        #     for i in range(overlap):
 
-                if left_flank[i] == right_flank[i]:
+        #         if left_flank[i] == right_flank[i]:
 
-                    if start_idx == None:
+        #             if start_idx == None:
 
-                        start_idx = i
+        #                 start_idx = i
 
-                    identity += 1
-                    running_overlap += 1
+        #             identity += 1
+        #             running_overlap += 1
 
-                else:
+        #         else:
 
-                    if running_overlap > longest_running_overlap:
+        #             if running_overlap > longest_running_overlap:
 
-                        longest_running_overlap = running_overlap
+        #                 longest_running_overlap = running_overlap
 
-                    if running_overlap > 10:
+        #             if running_overlap > 10:
 
-                        idxs_list.append((start_idx, i-1, running_overlap))
+        #                 idxs_list.append((start_idx, i-1, running_overlap))
 
-                    running_overlap = 0
-                    start_idx = None
+        #             running_overlap = 0
+        #             start_idx = None
 
-            overlap_list.append((overlap, identity/overlap, longest_running_overlap, idxs_list))
+        #     overlap_list.append((overlap, identity/overlap, longest_running_overlap, idxs_list))
 
-            overlap_dict[overlap] = idxs_list
+        #     overlap_dict[overlap] = idxs_list
 
-            overlap += 1
+        #     overlap += 1
 
-        print(sorted(overlap_list, key=lambda x:x[2])[-20:], file=sys.stderr)
+        # print(sorted(overlap_list, key=lambda x:x[2])[-20:], file=sys.stderr)
 
-        biggest_overlap = sorted(overlap_list, key=lambda x:x[2])[-1][0]
+        # biggest_overlap = sorted(overlap_list, key=lambda x:x[2])[-1][0]
 
-        print(overlap_dict[biggest_overlap], file=sys.stderr)
+        # print(overlap_dict[biggest_overlap], file=sys.stderr)
 
         print("\n\n", file=sys.stderr)
         print(left_hap, right_hap, merge_status, file=sys.stderr)
@@ -4645,8 +4880,8 @@ def make_haplotype_consensus_sequence(haplo_dict, outfile_name, unchosen_list): 
         flank = 10
         best_asm = (None, None, 1, None)
 
-        while overlap < min([len(haplo_asm[left_hap]["asm"]), len(haplo_asm[right_hap]["asm"])]):
-        # while overlap < 100000: # FIXME: only used to run faster
+        # while overlap < min([len(haplo_asm[left_hap]["asm"]), len(haplo_asm[right_hap]["asm"])]):
+        while overlap < 60000: # FIXME: only used to run faster
 
             left_flank = haplo_asm[left_hap]["asm"][len(haplo_asm[left_hap]["asm"])-overlap:]
             left_count = haplo_asm[left_hap]["count"][len(haplo_asm[left_hap]["asm"])-overlap:]
@@ -4664,7 +4899,9 @@ def make_haplotype_consensus_sequence(haplo_dict, outfile_name, unchosen_list): 
             mismatch_count = 0
             mismatch_list = []
 
-            while i < overlap and j < right_overlap:
+            while i < overlap:
+
+                # print(i, overlap, overlap-i, j, right_overlap, right_overlap-j, file=sys.stderr)
 
                 if left_flank[i] == right_flank[j]:
 
@@ -4684,44 +4921,36 @@ def make_haplotype_consensus_sequence(haplo_dict, outfile_name, unchosen_list): 
                     found = False
                     indel = 1
 
-                    if i+indel+flank >= overlap or j+indel+flank >= right_overlap:
+                    if i+indel+flank > overlap:
 
-                        if i+indel+flank >= overlap and j+indel+flank >= right_overlap:
-                            
-                            for x in range(overlap-i):
-
-                                if left_flank[i+x] != right_flank[j+x]:
-
-                                    mismatch_count += 1
-                                    # mismatch_list.append([left_flank[i+x], right_flank[j+x], i+x, j+x]) # FIXME: test
-
-                            i += x + indel
-                            j += x + indel
-
-                            total_overlap += x + 1
-
-                            found = True
-
-                            break
-
-                        elif i+indel+flank >= overlap:
-
-                            right_overlap = overlap+overlap-i
-                            right_flank = haplo_asm[right_hap]["asm"][:right_overlap]
-                            right_count = haplo_asm[right_hap]["count"][:right_overlap]
-
-                        elif j+indel+flank >= right_overlap:
-
-                            right_overlap = j + overlap-i
-                            right_flank = haplo_asm[right_hap]["asm"][:right_overlap]
-                            right_count = haplo_asm[right_hap]["count"][:right_overlap]
+                        # print("         ", i+indel+flank, overlap, j+indel+flank, right_overlap, file=sys.stderr)
                         
-                        # print(overlap, right_overlap, 1)
+                        for x in range(overlap-i):
 
-                        if i+indel+flank == overlap and j+indel+flank == right_overlap:
+                            if left_flank[i+x] != right_flank[j+x]:
 
-                            print("goes into this")
+                                mismatch_count += 1
+                                # mismatch_list.append([left_flank[i+x], right_flank[j+x], i+x, j+x]) # FIXME: test
 
+                        i += x + 1
+                        j += x + 1
+
+                        total_overlap += x
+
+                        found = True
+
+                        # print("         ", i, overlap, j, right_overlap, file=sys.stderr)
+
+                        break
+                    
+                    # while indel < 500: 
+                    while indel < 10000: 
+                    # while True: 
+
+                        # print("     ", i, j, indel, file=sys.stderr)
+
+                        if i+indel+flank == overlap:
+                        
                             for x in range(indel+flank):
 
                                 if left_flank[i+x] != right_flank[j+x]:
@@ -4736,81 +4965,22 @@ def make_haplotype_consensus_sequence(haplo_dict, outfile_name, unchosen_list): 
                             found = True
 
                             break
-                    
-                    # print(i, j, 2)
-                    
-                    while indel < 10000: 
-                    # while True: 
-
-                        # print(i, j, indel, left_flank[i+indel] == right_flank[j+indel])
-
-                        if i+indel+flank == overlap or j+indel+flank == right_overlap:
-
-                            if i+indel+flank < overlap:
-                                
-                                right_overlap = overlap+overlap-(i+indel+flank)
-                                right_flank = haplo_asm[right_hap]["asm"][:right_overlap]
-                                right_count = haplo_asm[right_hap]["count"][:right_overlap]
-
-                            elif j+indel+flank < right_overlap:
-
-                                right_overlap = j+indel+flank
-                                right_flank = haplo_asm[right_hap]["asm"][:right_overlap]
-                                right_count = haplo_asm[right_hap]["count"][:right_overlap]
-
-                            # print(overlap, right_overlap, 2)
-
-                            if i+indel+flank == overlap and j+indel+flank == right_overlap:
-
-                                for x in range(indel):
-
-                                    if left_flank[i+x] != right_flank[j+x]:
-
-                                        mismatch_count += 1
-                                        # mismatch_list.append([left_flank[i+x], right_flank[j+x], i+x, j+x]) # FIXME: test
-
-                                i += indel
-                                j += indel
-                                total_overlap += indel
-
-                                found = True
-
-                                # print(i, j, 4, "mismatch shift", indel)
-
-                                break
-
-                            elif i+indel+flank == overlap and j+indel+flank >= right_overlap:
-
-                                break
-
-                        # print(left_flank[i:i+flank], right_flank[j+indel:j+indel+flank])
-                        # print(left_flank[i+indel:i+indel+flank], right_flank[j:j+flank])
-                        # print(left_flank[i+indel:i+indel+flank], right_flank[j+indel:j+indel+flank])
 
                         mismatch_indel = 0
 
                         while mismatch_indel < 10:
 
-                            # print(left_flank[i+mismatch_indel:i+mismatch_indel+flank], right_flank[j+mismatch_indel+indel:j+mismatch_indel+indel+flank])
-                            # print(left_flank[i+mismatch_indel+indel:i+mismatch_indel+indel+flank], right_flank[j+mismatch_indel:j+mismatch_indel+flank])
-                            # print(left_flank[i+indel:i+indel+flank], right_flank[j+indel:j+indel+flank])
-
                             if left_flank[i+mismatch_indel:i+mismatch_indel+flank] == right_flank[j+mismatch_indel+indel:j+mismatch_indel+indel+flank]:
 
                                 merged_asm += right_flank[j:j+indel]
 
-                                found = True
                                 i += mismatch_indel
                                 j += indel + mismatch_indel
                                 mismatch_count += indel + mismatch_indel
-                                # mismatch_count += 1
                                 mismatch_list.append(["right shift indel", indel, i, j]) # FIXME: test
                                 total_overlap += indel + mismatch_indel
-                                # total_overlap += 1
 
-                                # print(i, j, 3, "right shift", indel)
-
-                                # print(len(merged_asm), ["right shift indel", indel, i, j])
+                                found = True
 
                                 break
 
@@ -4818,18 +4988,13 @@ def make_haplotype_consensus_sequence(haplo_dict, outfile_name, unchosen_list): 
 
                                 merged_asm += left_flank[i:i+indel]
 
-                                found = True
                                 i += indel + mismatch_indel
                                 j += mismatch_indel
                                 mismatch_count += indel + mismatch_indel
-                                # mismatch_count += 1
                                 mismatch_list.append(["left shift indel", indel, i, j]) # FIXME: test
                                 total_overlap += indel + mismatch_indel
-                                # total_overlap += 1
 
-                                # print(i, j, 3, "left shift", indel)
-
-                                # print(len(merged_asm), ["left shift indel", indel, i, j])
+                                found = True
 
                                 break
 
@@ -4843,8 +5008,6 @@ def make_haplotype_consensus_sequence(haplo_dict, outfile_name, unchosen_list): 
 
                                     merged_asm += right_flank[j:j+indel]
 
-                                found = True
-
                                 for x in range(indel):
 
                                     if left_flank[i+x] != right_flank[j+x]:
@@ -4856,14 +5019,19 @@ def make_haplotype_consensus_sequence(haplo_dict, outfile_name, unchosen_list): 
                                 j += indel
                                 total_overlap += indel
 
-                                # print(i, j, 3, "mismatch shift", indel)
-                                # print(len(merged_asm), ["mismatch shift", indel, i, j])
+                                found = True
 
                                 break
-                                
+
                             mismatch_indel += 1
 
                         if found:
+
+                            if right_overlap-j != overlap-i:
+
+                                right_overlap = j+overlap-i
+                                right_flank = haplo_asm[right_hap]["asm"][:right_overlap]
+                                right_count = haplo_asm[right_hap]["count"][:right_overlap]
 
                             break
 
@@ -4872,28 +5040,10 @@ def make_haplotype_consensus_sequence(haplo_dict, outfile_name, unchosen_list): 
                     if not found:
 
                         break
+            
+            # print(i, overlap, j, right_overlap, file=sys.stderr)
 
-                if i == overlap or j == right_overlap:
-
-                    if i < overlap:
-
-                        right_overlap = overlap+overlap-i
-                        right_flank = haplo_asm[right_hap]["asm"][:right_overlap]
-                        right_count = haplo_asm[right_hap]["count"][:right_overlap]
-
-                    elif j < right_overlap:
-
-                        right_overlap = j
-                        right_flank = haplo_asm[right_hap]["asm"][:right_overlap]
-                        right_count = haplo_asm[right_hap]["count"][:right_overlap]
-
-                    # print(overlap, right_overlap, 3)
-
-                    if i == overlap and j == right_overlap:
-
-                        break
-
-            if i == overlap and j == right_overlap:
+            if i == overlap:
 
                 # print(len(merged_asm), ["match", i, j, running_overlap])
 
@@ -4912,8 +5062,6 @@ def make_haplotype_consensus_sequence(haplo_dict, outfile_name, unchosen_list): 
             overlap += 1
 
         print(best_asm, file=sys.stderr)
-
-        print(len(best_asm[3]))
 
         if len(best_asm[3]) < 1000: # FIXME: test
 
@@ -5113,11 +5261,21 @@ if verbosity > 0:
 
 haploblock_dict, not_unique_list = perform_low_variance_merging(haploblock_dict, not_unique_list) # TODO: Add comments.
 
+print(len(not_unique_list), sum([read_dict[read_type][read][start_pos][3] == "ungrouped" and len(read_dict[read_type][read][start_pos][2]) != 0 for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]]), file=sys.stderr)
+test_haploblock_dict(haploblock_dict)
+test_not_unique_list(not_unique_list, haploblock_dict)
+
+# write_bam_file(bam_file)
+# exit()
+
 if verbosity > 0:
 
     print("\n\nPerforming multiple mapped read selection.\n", file=sys.stderr)
 
 hap_dict, merge_list, not_unique_list, unchosen_list = reevaluate_secondary_reads(not_unique_list, haploblock_dict)
+
+# write_bam_file(bam_file)
+# exit()
 
 if verbosity > 0:
 
