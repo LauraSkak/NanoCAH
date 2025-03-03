@@ -80,4 +80,4 @@ Since this algorithm is very new and is specialized to work on data available to
 
 ### The author (As of Febuary 2025) 
 
-I, Laura Skak Rasmussen, am a recent graduate of bioinformatics from Aarhus University and now work as a PhD student at MOMA in Aarhus, Denmark working on exploring the epigenetics of individuals with sex chromosome aneuploidies.
+I, Laura Skak, am a recent graduate of bioinformatics from Aarhus University and now work as a PhD student at MOMA in Aarhus, Denmark working on exploring the epigenetics of individuals with sex chromosome aneuploidies.

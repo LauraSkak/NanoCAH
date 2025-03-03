@@ -6,7 +6,7 @@ In this page i will go through how you prepare your data for the NanoCAH algorit
 
 ```bash
 
-conda create -n NanoCAH -c bioconda -c conda-forge pysam argparse sys samtools bwa
+conda create -n NanoCAH conda-forge::levenshtein bioconda::pysam bioconda::svim-asm bioconda::samtools bioconda::minimap2
 
 ```
 
