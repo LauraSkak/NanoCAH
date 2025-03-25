@@ -5366,9 +5366,10 @@ def write_bam_file(bam_file):
 
                     continue
 
-                if read_type == "s":
+                if read_type == "s" and read_dict["p"][read]["-"][3] == "removed":
 
                     read_dict[read_type][read][start_pos][0].flag &= ~pysam.FSECONDARY
+                    read_dict[read_type][read][start_pos][0].mapping_quality = 60
 
                 if args.merge_overlap and ("left" in read_dict[read_type][read][start_pos][3] or "right" in read_dict[read_type][read][start_pos][3]):
 
