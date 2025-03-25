@@ -2956,45 +2956,7 @@ def choose_primary_or_secondary_reads(hap_dict): # Calls cleanup_hap_dict
                 else:
 
                     merge_status = "error"
-
-                if verbosity > 1:
-
-                    if merge_status == "error":
-
-                        print(f'  There is seemingly an error.', file=sys.stderr)
-
-                        continue
-
-                    elif merge_status == "within":
-
-                        if min(list(hap_dict[block1][1].keys())) < min(list(hap_dict[block2][1].keys())) and max(list(hap_dict[block2][1].keys())) < max(list(hap_dict[block1][1].keys())):
-
-                            print(f'  {block1} and {block2} seemingly come from the same haplotype and will therefore eventually be merged. {block2} is {merge_status} {block1}.', file=sys.stderr)
-
-                        elif min(list(hap_dict[block2][1].keys())) < min(list(hap_dict[block1][1].keys())) and max(list(hap_dict[block1][1].keys())) < max(list(hap_dict[block2][1].keys())):
-
-                            print(f'  {block2} and {block1} seemingly come from the same haplotype and will therefore eventually be merged. {block1} is {merge_status} {block2}.', file=sys.stderr)
-
-                    else:
-
-                        if hap_dict[block1][0][block2][0] > 0:
-
-                            print(f'  {block2} secondary reads are ungrouped because they also map to {block1}', file=sys.stderr)
-                        
-                        if hap_dict[block2][0][block1][0] > 0:
-
-                            print(f'  {block1} secondary reads are ungrouped because they also map to {block2}', file=sys.stderr)
-
-                        if merge_status == "overlap":
-
-                            indel = "insertion"
-
-                        else:
-
-                            indel = "deletion"
-
-                        print(f'  {block1} and {block2} seemingly come from the same haplotype and will therefore eventually be merged. They have {merge_status} and are therefore most likely a large {indel}.', file=sys.stderr)
-
+                
                 if merge_status == "within":
 
                     if min(haploblock_dict[block2][0]) < min(haploblock_dict[block1][0]) and max(haploblock_dict[block1][0]) < max(haploblock_dict[block2][0]):
@@ -3032,7 +2994,63 @@ def choose_primary_or_secondary_reads(hap_dict): # Calls cleanup_hap_dict
 
                         read_dict[read_type][read][start_pos][3] = "ungrouped"
 
-                merges.append([block1, block2, merge_status, hap_dict[block1][0][block2][0]+hap_dict[block2][0][block1][0]])
+                # To figure out if two blocks should be merged, we evaluate how many of the possible paired reads mapped to the blocks are shared between them.
+
+                # to make sure that reads are not counted twice, the secondary reads with primary reads in either of the blocks are not counted. 
+                total_paired_reads = sum([read in read_dict["s"] for _, read, _ in hap_dict[block1][2]+hap_dict[block2][2]]) + sum([hap_dict[block1][0][sub_block][0] if sub_block not in [block1, block2] else 0 for sub_block in hap_dict[block1][0]]) + sum([hap_dict[block2][0][sub_block][0] if sub_block not in [block1, block2] else 0 for sub_block in hap_dict[block2][0]])
+
+                # The total shared are all paired reads that are not mapped to a different block. Therefore reads, where their partner is ungrouped or unphasable will count towards shared reads.
+                total_shared_reads = sum([hap_dict[block1][0][sub_block][0] if sub_block in [block2, "ungrouped", "unphasable"] else 0 for sub_block in hap_dict[block1][0]]) + sum([hap_dict[block2][0][sub_block][0] if sub_block in [block1, "ungrouped", "unphasable"] else 0 for sub_block in hap_dict[block2][0]])
+
+                print(total_paired_reads, total_shared_reads, total_shared_reads/total_paired_reads, file=sys.stderr)
+
+                if total_shared_reads/total_paired_reads > 0.1:
+
+                    merges.append([block1, block2, merge_status, hap_dict[block1][0][block2][0]+hap_dict[block2][0][block1][0]])
+
+                    if verbosity > 1:
+
+                        if merge_status == "error":
+
+                            print(f'  There is seemingly an error.', file=sys.stderr)
+
+                            continue
+
+                        elif merge_status == "within":
+
+                            if min(list(hap_dict[block1][1].keys())) < min(list(hap_dict[block2][1].keys())) and max(list(hap_dict[block2][1].keys())) < max(list(hap_dict[block1][1].keys())):
+
+                                print(f'  {block1} and {block2} seemingly come from the same haplotype and will therefore eventually be merged. {block2} is {merge_status} {block1}.', file=sys.stderr)
+
+                            elif min(list(hap_dict[block2][1].keys())) < min(list(hap_dict[block1][1].keys())) and max(list(hap_dict[block1][1].keys())) < max(list(hap_dict[block2][1].keys())):
+
+                                print(f'  {block2} and {block1} seemingly come from the same haplotype and will therefore eventually be merged. {block1} is {merge_status} {block2}.', file=sys.stderr)
+
+                        else:
+
+                            if hap_dict[block1][0][block2][0] > 0:
+
+                                print(f'  {block2} secondary reads are ungrouped because they also map to {block1}', file=sys.stderr)
+                            
+                            if hap_dict[block2][0][block1][0] > 0:
+
+                                print(f'  {block1} secondary reads are ungrouped because they also map to {block2}', file=sys.stderr)
+
+                            if merge_status == "overlap":
+
+                                indel = "insertion"
+
+                            else:
+
+                                indel = "deletion"
+
+                            print(f'  {block1} and {block2} seemingly come from the same haplotype and will therefore eventually be merged. They have {merge_status} and are therefore most likely a large {indel}.', file=sys.stderr)
+                    
+                    else:
+
+                        print(f'  {block1} and {block2} seemingly come from the same haplotype, but only {total_shared_reads}/{total_paired_reads} = {(total_shared_reads/total_paired_reads)*100}% of the possible paired reads connect the two blocks, so they should not be merged.', file=sys.stderr)
+
+
 
             if verbosity > 3:
 
@@ -5621,7 +5639,7 @@ hap_dict, merge_list, not_unique_list, unchosen_list = reevaluate_secondary_read
 haplo_dict, not_unique_list = create_haplotypes(haploblock_dict, not_unique_list, merge_list)
 
 write_bam_file(bam_file)
-# exit()
+exit()
 
 name_list, seq_list = make_haplotype_consensus_sequence(haplo_dict, unchosen_list)
 
