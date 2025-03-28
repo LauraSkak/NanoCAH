@@ -2642,7 +2642,6 @@ def perform_low_variance_merging(haploblock_dict, not_unique_list): # Calls low_
 
         print("\n\nPerforming low variance merging.\n", file=sys.stderr)
 
-    ungrouped_reevaluation_done = False
     count = 0
     diff = 0
 
@@ -2689,11 +2688,12 @@ def perform_low_variance_merging(haploblock_dict, not_unique_list): # Calls low_
 
             else:
 
+                if verbosity > 1:
+
+                    print("\n\nPerforming ambigous mapping block cleanup.\n", file=sys.stderr)
+
                 test_haploblock_dict(haploblock_dict)
                 test_not_unique_list(not_unique_list, haploblock_dict)
-                    
-                haploblock_dict_pre_filter = len(haploblock_dict)
-                ungrouped_list_pre_filter = len(not_unique_list)
 
                 variant_dict_pre_filter = len(variant_dict)
 
@@ -2719,6 +2719,10 @@ def perform_low_variance_merging(haploblock_dict, not_unique_list): # Calls low_
 
                 if variant_dict_pre_filter != len(variant_dict):
 
+                    if verbosity > 2:
+
+                        print(f'\nContinues low variance merging due to ambigous mapping cleanup causing removal of {variant_dict_pre_filter-len(variant_dict)} additional variant(s).\n')
+
                     continue
 
                 while True:
@@ -2732,23 +2736,13 @@ def perform_low_variance_merging(haploblock_dict, not_unique_list): # Calls low_
                     haploblock_dict_pre_filter_2 = len(haploblock_dict)
                     ungrouped_list_pre_filter_2 = len(not_unique_list)
 
-                    test_haploblock_dict(haploblock_dict)
-                    test_not_unique_list(not_unique_list, haploblock_dict)
-
                     not_unique_list, _ = reevaluate_remaining_ungrouped_reads(haploblock_dict, not_unique_list)
 
-                    test_haploblock_dict(haploblock_dict)
-                    test_not_unique_list(not_unique_list, haploblock_dict)
+                    haploblock_dict, not_unique_list = split_and_merge_primary_and_secondary_reads(0, 1, haploblock_dict, not_unique_list)
 
                     haploblock_dict, not_unique_list = cleanup_blocks(1, maxdiff, haploblock_dict, not_unique_list)
 
-                    test_haploblock_dict(haploblock_dict)
-                    test_not_unique_list(not_unique_list, haploblock_dict)
-
                     merge_low_overlap_blocks(maxdiff, haploblock_dict)
-
-                    test_haploblock_dict(haploblock_dict)
-                    test_not_unique_list(not_unique_list, haploblock_dict)
 
                     not_unique_list = cleanup_variants(haploblock_dict)
 
@@ -2760,198 +2754,9 @@ def perform_low_variance_merging(haploblock_dict, not_unique_list): # Calls low_
 
                 if variant_dict_pre_filter != len(variant_dict):
 
-                    continue
-
-                # haploblock_dict, not_unique_list = split_and_merge_primary_and_secondary_reads(0, 1, haploblock_dict, not_unique_list)
-
-                # haploblock_dict, not_unique_list = cleanup_blocks(1, maxdiff, haploblock_dict, not_unique_list)
-
-                # test_haploblock_dict(haploblock_dict)
-
-                # write_bam_file(bam_file)
-                # exit()
-
-                # low_variance_merge_haplotypes(0, 1, haploblock_dict)
-
-                # test_haploblock_dict(haploblock_dict)
-
-                break
-
-                write_bam_file(bam_file)
-                exit()
-
-                haploblock_dict, not_unique_list = split_and_merge_primary_and_secondary_reads(0, 1, haploblock_dict, not_unique_list)
-
-                test_haploblock_dict(haploblock_dict)
-                test_not_unique_list(not_unique_list, haploblock_dict)
-
-                write_bam_file(bam_file)
-                exit()
-
-                while True:
-
-                    haploblock_dict_pre_filter_2 = len(haploblock_dict)
-                    ungrouped_list_pre_filter_2 = len(not_unique_list)
-
-                    not_unique_list, _ = reevaluate_remaining_ungrouped_reads(haploblock_dict, not_unique_list)
-
-                    merge_low_overlap_blocks(maxdiff, haploblock_dict)
-
-                    if haploblock_dict_pre_filter_2 == len(haploblock_dict) and ungrouped_list_pre_filter_2 == len(not_unique_list):
-
-                        break
-
-                test_haploblock_dict(haploblock_dict)
-                test_not_unique_list(not_unique_list, haploblock_dict)
-
-                if variant_dict_pre_filter != len(variant_dict):
-
-                    continue
-
-                not_unique_list = cleanup_variants(haploblock_dict)
-
-                haploblock_dict_pre_filter = len(haploblock_dict)
-
-                not_unique_list = make_unphasable_consensus(haploblock_dict, not_unique_list)
-
-                merge_low_overlap_blocks(0, haploblock_dict)
-
-                test_haploblock_dict(haploblock_dict)
-                test_not_unique_list(not_unique_list, haploblock_dict)
-
-                break
-
-                write_bam_file(bam_file)
-                exit()
-
-                i = 1
-
-                while True:
-                        
-                    haploblock_dict_pre_filter = len(haploblock_dict)
-                    ungrouped_list_pre_filter = len(not_unique_list)
-
-                    variant_dict_pre_filter = len(variant_dict)
-
-                    test_haploblock_dict(haploblock_dict)
-                    test_not_unique_list(not_unique_list, haploblock_dict)
-
-                    haploblock_dict, not_unique_list = split_and_merge_primary_and_secondary_reads(maxdiff, 1, haploblock_dict, not_unique_list)
-
-                    test_haploblock_dict(haploblock_dict)
-                    test_not_unique_list(not_unique_list, haploblock_dict)
-
-                    while True:
-
-                        haploblock_dict_pre_filter_2 = len(haploblock_dict)
-                        ungrouped_list_pre_filter_2 = len(not_unique_list)
-
-                        not_unique_list, _ = reevaluate_remaining_ungrouped_reads(haploblock_dict, not_unique_list)
-
-                        merge_low_overlap_blocks(maxdiff, haploblock_dict)
-
-                        if haploblock_dict_pre_filter_2 == len(haploblock_dict) and ungrouped_list_pre_filter_2 == len(not_unique_list):
-
-                            break
-
-                    test_haploblock_dict(haploblock_dict)
-                    test_not_unique_list(not_unique_list, haploblock_dict)
-
-                    not_unique_list = cleanup_variants(haploblock_dict)
-
-                    if variant_dict_pre_filter != len(variant_dict):
-
-                        break
-
-                    while True:
-
-                        haploblock_dict_pre_filter_2 = len(haploblock_dict)
-                        ungrouped_list_pre_filter_2 = len(not_unique_list)
-
-                        not_unique_list, _ = reevaluate_remaining_ungrouped_reads(haploblock_dict, not_unique_list)
-
-                        merge_low_overlap_blocks(maxdiff, haploblock_dict)
-
-                        if haploblock_dict_pre_filter_2 == len(haploblock_dict) and ungrouped_list_pre_filter_2 == len(not_unique_list):
-
-                            break
-
-                    not_unique_list = cleanup_variants(haploblock_dict)
-
-                    if variant_dict_pre_filter != len(variant_dict):
-
-                        break
-
-                    test_haploblock_dict(haploblock_dict)
-                    test_not_unique_list(not_unique_list, haploblock_dict)
-
-                    haploblock_dict, not_unique_list = cleanup_blocks(haploblock_dict, not_unique_list, minimum_depth)
-
-                    test_haploblock_dict(haploblock_dict)
-                    test_not_unique_list(not_unique_list, haploblock_dict)
-
-                    while True:
-
-                        haploblock_dict_pre_filter_2 = len(haploblock_dict)
-                        ungrouped_list_pre_filter_2 = len(not_unique_list)
-
-                        not_unique_list, _ = reevaluate_remaining_ungrouped_reads(haploblock_dict, not_unique_list)
-
-                        merge_low_overlap_blocks(maxdiff, haploblock_dict)
-
-                        if haploblock_dict_pre_filter_2 == len(haploblock_dict) and ungrouped_list_pre_filter_2 == len(not_unique_list):
-
-                            break
-
-                    test_haploblock_dict(haploblock_dict)
-                    test_not_unique_list(not_unique_list, haploblock_dict)
-
-                    not_unique_list = cleanup_variants(haploblock_dict)
-
-                    if variant_dict_pre_filter != len(variant_dict):
-
-                        break
-
-                    not_unique_list = make_unphasable_consensus(haploblock_dict, not_unique_list)
-
-                    if haploblock_dict_pre_filter == len(haploblock_dict) and ungrouped_list_pre_filter == len(not_unique_list):
-
-                        break
-
-                    if i > max_cleanup_iterations:
-
-                        break
-
-                    i += 1
-
-                if variant_dict_pre_filter != len(variant_dict):
-
-                    continue
-
-                break
-
-                write_bam_file(bam_file)
-                exit()
-
-                variant_dict_pre_filter = len(variant_dict)
-
-                if verbosity > 2:
-
-                    print(f'\nAfter {count-1} iterations the block count is no longer decreasing, so the low overlap blocks are merged and ungrouped reads are reevaluated.\n', file=sys.stderr)
-
-                haploblock_dict_pre_filter = len(haploblock_dict)
-
-                merge_low_overlap_blocks(maxdiff, haploblock_dict)
-
-                ungrouped_list_pre_filter = len(not_unique_list)
-
-                not_unique_list, _ = reevaluate_remaining_ungrouped_reads(haploblock_dict, not_unique_list)
-
-                if variant_dict_pre_filter != len(variant_dict):
-
                     if verbosity > 2:
 
-                        print(f'\nContinues low variance merging due to low overlap merging and low variance reevaluation of ungrouped reads causing removal of {variant_dict_pre_filter-len(variant_dict)} additional variant(s).\n')
+                        print(f'\nContinues low variance merging due to ambigous mapping cleanup causing removal of {variant_dict_pre_filter-len(variant_dict)} additional variant(s).\n')
 
                     continue
 
@@ -2959,92 +2764,9 @@ def perform_low_variance_merging(haploblock_dict, not_unique_list): # Calls low_
 
                     if verbosity > 2:
 
-                        print(f'\nNo variants could be removed, so the blocks are split by primary or secondary mapping category.\n')
-
-                    haploblock_dict, not_unique_list = split_and_merge_primary_and_secondary_reads(maxdiff, minimum_depth, haploblock_dict, not_unique_list)
-
-                    variant_dict_pre_filter = len(variant_dict)
-
-                    i = 1
-
-                    while variant_dict_pre_filter == len(variant_dict):
-
-                        haploblock_dict_pre_filter = len(haploblock_dict)
-                        ungrouped_list_pre_filter = len(not_unique_list)
-
-                        while True:
-
-                            haploblock_dict_pre_filter_2 = len(haploblock_dict)
-                            ungrouped_list_pre_filter_2 = len(not_unique_list)
-
-                            low_variance_merge_haplotypes(0, minimum_overlap, haploblock_dict)
-                            low_variance_merge_haplotypes(maxdiff, minimum_overlap, haploblock_dict)
-                            low_variance_merge_haplotypes(0, 1, haploblock_dict)
-
-                            not_unique_list = reevaluate_unassigned_reads(0, minimum_overlap, haploblock_dict, not_unique_list)
-                            not_unique_list = reevaluate_unassigned_reads(diff, minimum_overlap, haploblock_dict, not_unique_list)
-                            not_unique_list = reevaluate_unassigned_reads(0, 1, haploblock_dict, not_unique_list)
-
-                            if variant_dict_pre_filter != len(variant_dict):
-
-                                break
-
-                            if haploblock_dict_pre_filter_2 == len(haploblock_dict) and ungrouped_list_pre_filter_2 == len(not_unique_list):
-
-                                break
-
-                        if variant_dict_pre_filter != len(variant_dict):
-
-                            break
-
-                        while True:
-
-                            haploblock_dict_pre_filter_2 = len(haploblock_dict)
-                            ungrouped_list_pre_filter_2 = len(not_unique_list)
-
-                            merge_low_overlap_blocks(haploblock_dict)
-
-                            not_unique_list, _ = reevaluate_remaining_ungrouped_reads(haploblock_dict, not_unique_list)
-
-                            if variant_dict_pre_filter != len(variant_dict):
-
-                                break
-
-                            if haploblock_dict_pre_filter_2 == len(haploblock_dict) and ungrouped_list_pre_filter_2 == len(not_unique_list):
-
-                                break
-
-                        if variant_dict_pre_filter != len(variant_dict):
-
-                            break
-
-                        if len(not_unique_list) == ungrouped_list_pre_filter and len(haploblock_dict) == haploblock_dict_pre_filter:
-
-                            break
-
-                        if i > max_cleanup_iterations:
-
-                            break
-
-                        i += 1
-
-                if variant_dict_pre_filter == len(variant_dict):
-
-                    if verbosity > 1:
-
-                        print("\n\nPerforming ambigous mapping block cleanup.\n", file=sys.stderr)
-
-                    haploblock_dict, not_unique_list = perform_ambigous_block_cleanup(haploblock_dict, not_unique_list)
-
-                    if verbosity > 2:
-
                         print(f'\nAfter {count-1} iterations the block count is no longer decreasing, so the process is stopped.\n', file=sys.stderr)
 
                     break
-
-                if verbosity > 2:
-
-                    print(f'\nAdditional variants were removed so low variance merging continues. The block count is now {len(haploblock_dict)} and the ungrouped read count is {len(not_unique_list)}.\n')
 
         else:
 
@@ -6058,8 +5780,8 @@ for i in range(len(hap_names)):
             print(block1, block2, [(pos, base1, sum([pos in read_dict[read_type][read][start_pos][2] and read_dict[read_type][read][start_pos][2][pos] == base1 for read_type, read, start_pos in haploblock_dict[block1][1]]), base2, sum([pos in read_dict[read_type][read][start_pos][2] and read_dict[read_type][read][start_pos][2][pos] == base2 for read_type, read, start_pos in haploblock_dict[block2][1]]), [(base, len(variant_dict[pos][base])) for base in variant_dict[pos]]) for pos, base1, base2 in mismatch_list], file=sys.stderr)
 
 # write_bam_file("secondary_filtered_post_low_variance_merging".join(bam_file.split("secondary_filtered")))
-# write_bam_file(bam_file)
-# exit()
+write_bam_file(bam_file)
+exit()
 
 hap_dict, merge_list, not_unique_list, unchosen_list = reevaluate_secondary_reads(not_unique_list, haploblock_dict)
 
