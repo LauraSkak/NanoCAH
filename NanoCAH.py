@@ -99,7 +99,7 @@ parser.add_argument("--minimum_variance",
 
 parser.add_argument("--minimum_identity",
                     type=int,
-                    default = 0.9,
+                    default = 0.25,
                     help = "The minimum identity required to merge two high confidence blocks.")
 
 parser.add_argument("--maximal_iterations",
@@ -161,10 +161,10 @@ expected_polyploidy = 2 # FIXME: MISSING ARG. Not implemented
 show_removed = args.show_removed_reads
 verbosity = args.verbosity
 min_overlap = 1000 # FIXME: MISSING ARG.
-max_overlap = 100000 # FIXME: MISSING ARG.
+max_overlap = 1000000 # FIXME: MISSING ARG.
 overlap_jump = 500 # FIXME: MISSING ARG.
 max_error_length = 10000 # FIXME: MISSING ARG.
-max_variance = 0.40 # FIXME: MISSING ARG.
+max_variance = 0.30 # FIXME: MISSING ARG.
 minimum_pct_common_reads = 0.2 # FIXME: MISSING ARG.
 
 ####################################################################################################
@@ -885,6 +885,8 @@ def split_blocks(minimum_depth, haploblock_dict, not_unique_list): # Calls reint
 
         if len(haploblock_dict[block][1]) < minimum_depth:
 
+            print(f'{block} is removed.', file=sys.stderr)
+
             for read_type, read, start_pos in haploblock_dict[block][1]:
 
                 reintroduce_read_to_variant_dict(read_type, read, start_pos)
@@ -960,7 +962,7 @@ def split_blocks(minimum_depth, haploblock_dict, not_unique_list): # Calls reint
 
             blocks.append([start, end, {}, [], all_reads])
 
-        # print(block, [(block[0], block[1], len(block[2]), len(block[3])) for block in blocks], len(haploblock_dict[block][1]), len(haploblock_dict[block][0]), file=sys.stderr)
+        print(block, [(block[0], block[1], len(block[2]), len(block[3])) for block in blocks], len(haploblock_dict[block][1]), len(haploblock_dict[block][0]), file=sys.stderr)
 
         if len(blocks) > 1:
 
@@ -1017,7 +1019,7 @@ def split_blocks(minimum_depth, haploblock_dict, not_unique_list): # Calls reint
 
                 continue
 
-            read_dict[read_type][read][start_pos][3] = "ungrouped" # FIXME: test
+            read_dict[read_type][read][start_pos][3] = "ungrouped"
 
             if len(read_dict[read_type][read][start_pos][1]) == 0:
 
@@ -1052,15 +1054,25 @@ def split_blocks(minimum_depth, haploblock_dict, not_unique_list): # Calls reint
 
             #     print(block, "Read was not grouped", haploblock_dict[block][0], [(block[0], block[1], len(block[2]), len(block[3])) for block in blocks], mid, read_dict[read_type][read][start_pos][1], sum(list(read_dict[read_type][read][start_pos][1])), len(read_dict[read_type][read][start_pos][1]))
 
+        print(block, [(block[0], block[1], len(block[2]), len(block[3])) for block in blocks], len(haploblock_dict[block][1]), len(haploblock_dict[block][0]), file=sys.stderr)
+
         new_blocks = []
 
         for i in range(len(blocks)):
 
-            if len(blocks[i][3]) != 0:
+            if len(blocks[i][3]) >= minimum_depth:
 
                 new_blocks.append(blocks[i])
+            
+            elif len(blocks[i][3]) != 0:
+
+                for read_type, read, start_pos in blocks[i][3]:
+
+                    read_dict[read_type][read][start_pos][3] = "ungrouped"
 
         blocks = new_blocks
+
+        print(block, [(block[0], block[1], len(block[2]), len(block[3])) for block in blocks], len(haploblock_dict[block][1]), len(haploblock_dict[block][0]), file=sys.stderr)
 
         for read_type, read, start_pos in haploblock_dict[block][1]:
 
@@ -1199,7 +1211,7 @@ def low_variance_merge_haplotypes(max_diff, minimum_overlap, haploblock_dict): #
 
                 merge_haploblocks(block1, block2, mismatch_list, haploblock_dict)
 
-def split_and_merge_primary_and_secondary_reads(max_diff, minimum_depth, haploblock_dict, not_unique_list): # Calls split_blocks and low_variance_merge_haplotypes
+def split_and_merge_primary_and_secondary_reads(max_diff, minimum_overlap, minimum_depth, haploblock_dict, not_unique_list): # Calls split_blocks and low_variance_merge_haplotypes
 
     # Splitting primary and secondary reads.
 
@@ -1246,9 +1258,9 @@ def split_and_merge_primary_and_secondary_reads(max_diff, minimum_depth, haplobl
             haploblock_dict_pre_filter = len(temp_haploblock_dict[group])
             ungrouped_list_pre_filter = len(not_unique_list)
 
-            low_variance_merge_haplotypes(0, 1, temp_haploblock_dict[group])
-            # low_variance_merge_haplotypes(max_diff, minimum_overlap, temp_haploblock_dict[group])
-            low_variance_merge_haplotypes(max_diff, 1, temp_haploblock_dict[group])
+            low_variance_merge_haplotypes(0, minimum_overlap, temp_haploblock_dict[group])
+            # low_variance_merge_haplotypes(max_diff, 1, temp_haploblock_dict[group])
+            low_variance_merge_haplotypes(max_diff, minimum_overlap, temp_haploblock_dict[group])
 
             if haploblock_dict_pre_filter == len(temp_haploblock_dict[group]) and ungrouped_list_pre_filter == len(not_unique_list):
 
@@ -1355,7 +1367,7 @@ def perform_no_variance_merging(haploblock_dict, not_unique_list): # Calls merge
 
     merge_low_coverage_blocks(haploblock_dict)
 
-    haploblock_dict, not_unique_list = split_and_merge_primary_and_secondary_reads(0, 1, haploblock_dict, not_unique_list)
+    haploblock_dict, not_unique_list = split_and_merge_primary_and_secondary_reads(0, 1, 1, haploblock_dict, not_unique_list)
 
     if verbosity > 1:
 
@@ -1576,154 +1588,6 @@ def merge_low_overlap_blocks(maxdiff, haploblock_dict):
 
                 diff += 1
 
-# def merge_low_overlap_blocks(haploblock_dict):
-
-#     diff = 0
-
-#     while diff <= maxdiff:
-
-#         block_reduction = False
-
-#         for block in list(haploblock_dict.keys()):
-
-#             if block not in haploblock_dict:
-
-#                 continue
-
-#             fit_list = make_fit_list(haploblock_dict[block][0], haploblock_dict, diff, 1)
-
-#             if len(fit_list) > 0: # Checks if one of the mismatched SNPs is a high confidence SNP, in which case the read would not be moved.
-
-#                 new_fit_list = []
-
-#                 for i in range(len(fit_list)):
-
-#                     block1 = block
-
-#                     block2 = fit_list[i][0]
-
-#                     mismatch_list = fit_list[i][3]
-
-#                     if block1 != block2 and fit_list[i][2]/fit_list[i][1] > 0.5 and len(mismatch_list) > 0:
-
-#                         if sum([sum([base1 not in ["D", "I"] and base2 not in ["D", "I"] and pos in read_dict[read_type][read][start_pos][1] for read_type, read, start_pos in haploblock_dict[block2][1]]) > minimum_count and sum([pos in read_dict[read_type][read][start_pos][1] for read_type, read, start_pos in haploblock_dict[block1][1]]) > minimum_count for pos, base1, base2 in mismatch_list]) > 0:
-
-#                             continue
-
-#                         else:
-
-#                             new_fit_list.append(fit_list[i])
-
-#                     elif block1 != block2 and fit_list[i][2]/fit_list[i][1] > 0.5:
-
-#                         new_fit_list.append(fit_list[i])
-
-#                 # print("This is from low overlap merging:", fit_list, new_fit_list, file=sys.stderr)
-
-#                 fit_list = new_fit_list
-
-#             if len(fit_list) == 1:
-
-#                 block1 = block
-#                 block2 = fit_list[0][0]
-
-#                 block_reduction = True
-
-#                 if verbosity > 2:
-
-#                     print(f"{block1} and {block2} is merged in low overlap merging. Overlap is {fit_list[0][1]} and mismatch count is {len(fit_list[0][3])}", file=sys.stderr)
-
-#                 for pos, _, _ in fit_list[0][3]:
-
-#                     if sum([pos in read_dict[read_type][read][start_pos][1] for read_type, read, start_pos in haploblock_dict[block2][1]]) > sum([pos in read_dict[read_type][read][start_pos][1] for read_type, read, start_pos in haploblock_dict[block1][1]]):
-
-#                         hap = block1
-
-#                     else:
-
-#                         hap = block2
-
-#                     read_count = 0
-
-#                     for read_type, read, start_pos in haploblock_dict[hap][1]:
-
-#                         if pos in read_dict[read_type][read][start_pos][1]:
-
-#                             read_count += 1
-
-#                             remove_read_from_variant_dict(pos, read_type, read, start_pos, haploblock_dict)
-
-#                     if pos in haploblock_dict[hap][0]:
-
-#                         del haploblock_dict[hap][0][pos]
-
-#                     if verbosity > 3:
-
-#                         if pos in variant_dict:
-
-#                             print(f"\tpos {pos} removed from the {read_count} {hap} read(s). Base dict is now {[(base, len(variant_dict[pos][base])) for base in variant_dict[pos]]}", file=sys.stderr)
-
-#                         else:
-
-#                             print(f"\tpos {pos} removed from the {read_count} {hap} read(s). This caused the base count to fall below the minimum count and the pos was removed.", file=sys.stderr)
-
-#                 haploblock_dict[block1][0].update(haploblock_dict[block2][0].copy())
-#                 haploblock_dict[block1][1] += haploblock_dict[block2][1]
-
-#                 for read_type, read, start_pos in haploblock_dict[block2][1]:
-
-#                     read_dict[read_type][read][start_pos][3] = block1
-
-#                 del haploblock_dict[block2]
-
-#             elif len(fit_list) > 1:
-
-#                 mismatch_list = []
-
-#                 for pos, _, _ in fit_list[0][3]:
-
-#                     for i in range(1, len(fit_list)):
-
-#                         found = False
-
-#                         for pos2, _, _ in fit_list[i][3]:
-
-#                             if pos == pos2:
-
-#                                 found = True
-
-#                         if not found:
-
-#                             break
-
-#                     if found:
-
-#                         mismatch_list.append((pos, None, None))
-
-#                 if len(mismatch_list) > 0:
-
-#                     block1 = block
-
-#                     for i in range(len(fit_list)):
-
-#                         block2 = fit_list[i][0]
-
-#                         for pos, _, _ in mismatch_list:
-
-#                             if sum([pos in read_dict[read_type][read][start_pos][1] for read_type, read, start_pos in haploblock_dict[block2][1]]) < sum([pos in read_dict[read_type][read][start_pos][1] for read_type, read, start_pos in haploblock_dict[block1][1]]):
-
-#                                 block2, block1 = block1, block2
-
-#                             for read_type, read, start_pos in haploblock_dict[block2][1]:
-
-#                                 if pos in read_dict[read_type][read][start_pos][1]:
-
-#                                     remove_read_from_variant_dict(pos, read_type, read, start_pos, haploblock_dict)
-
-#         if not block_reduction:
-
-#             diff += 1
-
 def reevaluate_remaining_ungrouped_reads(haploblock_dict, not_unique_list, merge_list = []): # Calls make_fit_list, compare_haploblocks, remove_read_from_variant_dict, merge_haploblocks and add_read_to_haploblock
 
     diff = 0
@@ -1803,7 +1667,7 @@ def reevaluate_remaining_ungrouped_reads(haploblock_dict, not_unique_list, merge
 
             # print("This is from the remaining ungrouped reads:", fit_list, file=sys.stderr)
 
-            if len(fit_list) == 1 or diff == 0 and len(fit_list) > 1:
+            if len(fit_list) == 1 or (diff == 0 and len(fit_list) > 1):
 
                 # print("This is from the remaining ungrouped reads:", fit_list, file=sys.stderr)
 
@@ -1907,9 +1771,9 @@ def reevaluate_remaining_ungrouped_reads(haploblock_dict, not_unique_list, merge
 
         #     add_read_to_haploblock(read_type, read, start_pos, fit_list[0][0], fit_list[0][3], haploblock_dict)
         
-        # else:
+        else:
                 
-        #     new_not_unique_list.append((read_type, read, start_pos))
+            new_not_unique_list.append((read_type, read, start_pos))
 
     not_unique_list = new_not_unique_list
 
@@ -2122,6 +1986,11 @@ def cleanup_variants(haploblock_dict): # Calls remove_variant, remove_read_pos_f
 
                         continue
 
+                    if read_dict[read_type][read][start_pos][3] not in haploblock_dict and read_dict[read_type][read][start_pos][3] != "unphasable": # FIXME: somewhere reads are lost. This fixes that mess-up. But the real problem should be found...
+
+                        read_dict[read_type][read][start_pos][3] = "ungrouped"
+                        new_ungrouped_list.append((read_type, read, start_pos))
+
                     if len(read_dict[read_type][read][start_pos][2]) == 0:
 
                         continue
@@ -2194,25 +2063,27 @@ def cleanup_variants(haploblock_dict): # Calls remove_variant, remove_read_pos_f
 
                             diff += 1
 
-                        # if read_dict[read_type][read][start_pos][3] == "ungrouped":
+                    if read_dict[read_type][read][start_pos][3] == "ungrouped":
 
-                        #     if len(read_dict[read_type][read][start_pos][2])*minimum_pct_overlap > maxdiff:
+                        new_ungrouped_list.append((read_type, read, start_pos))
 
-                        #         fit_list = make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, maxdiff, len(read_dict[read_type][read][start_pos][2])*minimum_pct_overlap)
+                        # if len(read_dict[read_type][read][start_pos][2])*minimum_pct_overlap > maxdiff:
 
-                        #     else:
+                        #     fit_list = make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, maxdiff, len(read_dict[read_type][read][start_pos][2])*minimum_pct_overlap)
 
-                        #         fit_list = make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, len(read_dict[read_type][read][start_pos][2])*minimum_pct_overlap, len(read_dict[read_type][read][start_pos][2])*minimum_pct_overlap)
+                        # else:
 
-                        #     # print("Variant cleanup:", read_type, read, start_pos, read_dict[read_type][read][start_pos][3], fit_list)
+                        #     fit_list = make_fit_list(read_dict[read_type][read][start_pos][2], haploblock_dict, len(read_dict[read_type][read][start_pos][2])*minimum_pct_overlap, len(read_dict[read_type][read][start_pos][2])*minimum_pct_overlap)
 
-                        #     if len(fit_list) == 1:
+                        # # print("Variant cleanup:", read_type, read, start_pos, read_dict[read_type][read][start_pos][3], fit_list)
 
-                        #         add_read_to_haploblock(read_type, read, start_pos, fit_list[0][0], fit_list[0][3], haploblock_dict)
+                        # if len(fit_list) == 1:
 
-                        #     else:
+                        #     add_read_to_haploblock(read_type, read, start_pos, fit_list[0][0], fit_list[0][3], haploblock_dict)
 
-                        #         new_ungrouped_list.append((read_type, read, start_pos))
+                        # else:
+
+                        #     new_ungrouped_list.append((read_type, read, start_pos))
 
         if pre_filter_variant == len(variant_dict):
 
@@ -2265,112 +2136,6 @@ def cleanup_blocks(minimum_depth, maxdiff, haploblock_dict, not_unique_list): # 
 
                 fit_list = make_fit_list(read_variant_dict, haploblock_dict, diff, 1)
 
-                # if len(fit_list) > 1: # Checks if one of the mismatched SNPs is a high confidence SNP, in which case the read would not be moved.
-
-                #     new_fit_list = []
-
-                #     for i in range(len(fit_list)):
-
-                #         block1 = fit_list[i][0]
-
-                #         mismatch_list = fit_list[i][3]
-
-                #         if len(mismatch_list) > 0:
-
-                #             if sum([sum([base1 not in ["D", "I"] and base2 not in ["D", "I"] and pos in read_dict[read_type][read][start_pos][1] for read_type, read, start_pos in haploblock_dict[block2][1]]) > minimum_count and sum([pos in read_dict[read_type][read][start_pos][1] for read_type, read, start_pos in haploblock_dict[block1][1]]) > minimum_count for pos, base1, base2 in mismatch_list]) > 0:
-
-                #                 continue
-
-                #             else:
-
-                #                 new_fit_list.append(fit_list[i])
-
-                #         else:
-
-                #             new_fit_list.append(fit_list[i])
-
-                #     fit_list = new_fit_list
-
-                # if len(fit_list) == 0:
-
-                #     diff += 1
-
-                #     continue
-
-                # if len(fit_list) == 1:
-
-                #     reintroduce_read_to_variant_dict(read_type, read, start_pos)
-                #     read_dict[read_type][read][start_pos][3] = block2
-
-                #     if len(fit_list[0][3]):
-
-                #         remove_mismatched_variants_from_read(fit_list[0][3], read_type, read, start_pos, haploblock_dict)
-
-                #     block = fit_list[0][0]
-
-                #     if block == block2:
-
-                #         new_read_variant_dict.update(read_dict[read_type][read][start_pos][1].copy())
-                #         new_read_list.append((read_type, read, start_pos))
-
-                #     else:
-
-                #         haploblock_dict[block][0].update(read_dict[read_type][read][start_pos][1].copy())
-                #         haploblock_dict[block][1].append((read_type, read, start_pos))
-                #         read_dict[read_type][read][start_pos][3] = block
-
-                #     found = True
-
-                #     break
-
-                # else:
-
-                #     max_coverage = 0
-                #     max_block = None
-                #     max_i = None
-
-                #     for i in range(len(fit_list)):
-
-                #         block1, _, _, _ = fit_list[i]
-
-                #         pos_coverage = sum([pos in read_dict[read_type][read][start_pos][1] for read_type, read, start_pos in haploblock_dict[block1][1] for pos in read_dict[read_type][read][start_pos][1]])
-
-                #         if pos_coverage > max_coverage:
-
-                #             max_coverage = pos_coverage
-                #             max_block = block1
-                #             max_i = i
-
-                #     # print("Cleanup blocks:", fit_list)
-
-                #     # print([(block, sum([pos in read_dict[read_type][read][start_pos][1] for read_type, read, start_pos in haploblock_dict[block][1] for pos in read_dict[read_type][read][start_pos][1]])) for block, _, _, _ in fit_list], max_block)
-
-                #     reintroduce_read_to_variant_dict(read_type, read, start_pos)
-                #     read_dict[read_type][read][start_pos][3] = block2
-
-                #     if len(fit_list[max_i][3]) > 0:
-
-                #         remove_mismatched_variants_from_read(fit_list[max_i][3], read_type, read, start_pos, haploblock_dict)
-
-                #     if max_block == block2:
-
-                #         new_read_variant_dict.update(read_dict[read_type][read][start_pos][1].copy())
-                #         new_read_list.append((read_type, read, start_pos))
-
-                #     else:
-
-                #         haploblock_dict[max_block][0].update(read_dict[read_type][read][start_pos][1].copy())
-                #         haploblock_dict[max_block][1].append((read_type, read, start_pos))
-                #         read_dict[read_type][read][start_pos][3] = max_block
-
-                #         # if verbosity > 3:
-
-                #         #     print(f'Ambigously grouped read moved from {block2} to {max_block}', file=sys.stderr)
-
-                #     found = True
-
-                #     break
-
                 if len(fit_list) == 0:
 
                     diff += 1
@@ -2384,6 +2149,7 @@ def cleanup_blocks(minimum_depth, maxdiff, haploblock_dict, not_unique_list): # 
                     block = fit_list[0][0]
 
                     reintroduce_read_to_variant_dict(read_type, read, start_pos)
+
                     read_dict[read_type][read][start_pos][3] = block
 
                     if diff > 0:
@@ -2440,7 +2206,15 @@ def cleanup_blocks(minimum_depth, maxdiff, haploblock_dict, not_unique_list): # 
 
             haploblock_dict[block2] = [new_read_variant_dict, new_read_list]
 
+    print("ungrouped count comparison 3.2:", len(not_unique_list), sum([read_dict[read_type][read][start_pos][3] == "ungrouped" and len(read_dict[read_type][read][start_pos][2]) != 0 for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]]), file=sys.stderr)
+
+    print("block size:", [(block, len(haploblock_dict[block][1]), sum([block == read_dict[read_type][read][start_pos][3] for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]])) for block in haploblock_dict], file=sys.stderr)
+
     split_blocks(minimum_depth, haploblock_dict, not_unique_list)
+
+    print("ungrouped count comparison 3.3:", len(not_unique_list), sum([read_dict[read_type][read][start_pos][3] == "ungrouped" and len(read_dict[read_type][read][start_pos][2]) != 0 for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]]), file=sys.stderr)
+
+    print("block size:", [(block, len(haploblock_dict[block][1]), sum([block == read_dict[read_type][read][start_pos][3] for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]])) for block in haploblock_dict], file=sys.stderr)
 
     new_haploblock_dict = {}
 
@@ -2592,7 +2366,7 @@ def perform_ambigous_block_cleanup(haploblock_dict, not_unique_list): # Calls cl
         ungrouped_list_pre_filter = len(not_unique_list)
         variant_dict_pre_filter = len(variant_dict)
 
-        haploblock_dict, not_unique_list = split_and_merge_primary_and_secondary_reads(0, 1, haploblock_dict, not_unique_list)
+        haploblock_dict, not_unique_list = split_and_merge_primary_and_secondary_reads(0, 1, 1, haploblock_dict, not_unique_list)
 
         low_variance_merge_haplotypes(0, 1, haploblock_dict)
 
@@ -2636,6 +2410,231 @@ def perform_ambigous_block_cleanup(haploblock_dict, not_unique_list): # Calls cl
 
     return haploblock_dict, not_unique_list
 
+
+def split_and_merge_unique_and_multimapped_reads(max_diff, minimum_overlap, minimum_depth, haploblock_dict, not_unique_list): # Calls split_blocks and low_variance_merge_haplotypes
+
+    # Splitting primary and secondary reads.
+
+    temp_haploblock_dict = {"u": {}, "m": {}}
+
+    for block in list(haploblock_dict.keys()):
+
+        for read_type, read, start_pos in haploblock_dict[block][1]:
+
+            if read in read_dict["p"] and read in read_dict["s"]:
+
+                read_group = "m"
+            
+            else:
+
+                read_group = "u"
+
+            if read_group not in temp_haploblock_dict:
+
+                temp_haploblock_dict[read_group] = {}
+
+            new_block_name = f'{block}_{read_group}'
+
+            if new_block_name not in temp_haploblock_dict[read_group]:
+
+                temp_haploblock_dict[read_group][new_block_name] = [{}, []]
+
+            temp_haploblock_dict[read_group][new_block_name][0].update(read_dict[read_type][read][start_pos][1].copy())
+            temp_haploblock_dict[read_group][new_block_name][1].append((read_type, read, start_pos))
+
+            read_dict[read_type][read][start_pos][3] = new_block_name
+
+    new_hapblock_dict = {}
+    count = 0
+
+    for group in temp_haploblock_dict:
+
+        # Because the removed variants are only removed from the blocks in one read type group, they have to be removed after.
+
+        for block_name in temp_haploblock_dict[group]:
+
+            for pos in list(temp_haploblock_dict[group][block_name][0].keys()):
+
+                if pos not in variant_dict:
+
+                    del temp_haploblock_dict[group][block_name][0][pos]
+
+        split_blocks(minimum_depth, temp_haploblock_dict[group], not_unique_list)
+
+        while True:
+
+            haploblock_dict_pre_filter = len(temp_haploblock_dict[group])
+            ungrouped_list_pre_filter = len(not_unique_list)
+
+            low_variance_merge_haplotypes(0, minimum_overlap, temp_haploblock_dict[group])
+            # low_variance_merge_haplotypes(max_diff, 1, temp_haploblock_dict[group])
+            low_variance_merge_haplotypes(max_diff, minimum_overlap, temp_haploblock_dict[group])
+
+            if haploblock_dict_pre_filter == len(temp_haploblock_dict[group]) and ungrouped_list_pre_filter == len(not_unique_list):
+
+                break
+
+        for block in temp_haploblock_dict[group]:
+
+            count += 1
+            block_name = f'block_{count}'
+
+            new_hapblock_dict[block_name] = temp_haploblock_dict[group][block]
+
+            for read_type, read, start_pos in temp_haploblock_dict[group][block][1]:
+
+                read_dict[read_type][read][start_pos][3] = block_name
+
+    # Because the removed variants are only removed from the blocks in one read type group, they have to be removed after.
+
+    for block_name in list(new_hapblock_dict.keys()):
+
+        if len(new_hapblock_dict[block_name][1]) < minimum_depth:
+
+            not_unique_list += new_hapblock_dict[block_name][1]
+
+            for read_type, read, start_pos in new_hapblock_dict[block_name][1]:
+
+                reintroduce_read_to_variant_dict(read_type, read, start_pos)
+
+            del new_hapblock_dict[block_name]
+
+            continue
+
+        for pos in list(new_hapblock_dict[block_name][0].keys()):
+
+            if pos not in variant_dict:
+
+                del new_hapblock_dict[block_name][0][pos]
+
+    return new_hapblock_dict, not_unique_list
+
+def final_merging(haploblock_dict, not_unique_list):
+
+    # This function makes sure we merge all blocks that do not have more than one match, where the matches do not match themselves. That would indicate an area, where we cannot be sure if a block fits one or the other, and det blocks should therefore be kept seperate. 
+
+    merge_dict = {}
+
+    for block in haploblock_dict:
+
+        fit_list = make_fit_list(haploblock_dict[block][0], haploblock_dict, 0, 1)
+
+        for i in range(len(fit_list)):
+
+            if fit_list[i][0] != block:
+
+                if block not in merge_dict:
+
+                    merge_dict[block] = []
+
+                merge_dict[block].append(fit_list[i][0])
+
+    for block in list(merge_dict.keys()):
+
+        if block not in merge_dict:
+
+            continue
+
+        if len(merge_dict[block]) != 0:
+
+            merge_list = merge_dict[block].copy()
+
+            i = 0
+
+            while i < len(merge_list):
+
+                for block2 in merge_dict[merge_list[i]]:
+
+                    if block2 not in merge_list:
+
+                        merge_list.append(block2)
+
+                i += 1
+
+            for i in range(len(merge_list)):
+                for j in range(i+1, len(merge_list)):
+
+                    overlap, identity, mismatch_list = compare_haploblocks(merge_list[i], merge_list[j], haploblock_dict)
+
+                    if len(mismatch_list) > 0:
+
+                        if merge_list[i] in merge_dict[block]:
+
+                            merge_dict[block].remove(merge_list[i])
+
+                        if merge_list[j] in merge_dict[block]:
+
+                            merge_dict[block].remove(merge_list[j])
+
+                        if block in merge_dict[merge_list[i]]:
+
+                            merge_dict[merge_list[i]].remove(block)
+
+                        if block in merge_dict[merge_list[j]]:
+
+                            merge_dict[merge_list[j]].remove(block)
+
+        if len(merge_dict[block]) == 0:
+
+            del merge_dict[block]
+
+    for block in merge_dict:
+
+        if block not in haploblock_dict:
+
+            continue
+
+        merge_list = merge_dict[block].copy()
+
+        i = 0
+
+        while i < len(merge_list):
+
+            for block2 in merge_dict[merge_list[i]]:
+
+                if block2 not in merge_list and block2 != block:
+
+                    merge_list.append(block2)
+
+            i += 1
+
+        for i in range(len(merge_list)):
+
+            merge_haploblocks(block, merge_list[i], [], haploblock_dict)
+
+    new_haploblock_dict = {}
+
+    count = 1
+
+    for block in haploblock_dict:
+
+        new_block_name = f'block_{count}'
+
+        new_haploblock_dict[new_block_name] = haploblock_dict[block]
+
+        for read_type, read, start_pos in haploblock_dict[block][1]:
+
+            read_dict[read_type][read][start_pos][3] = new_block_name
+
+        count += 1
+
+    new_not_unique_list = []
+
+    for read_type, read, start_pos in not_unique_list:
+
+        fit_list = make_fit_list(read_dict[read_type][read][start_pos][2], new_haploblock_dict, 0, 1)
+
+        if len(fit_list) == 1:
+
+            add_read_to_haploblock(read_type, read, start_pos, fit_list[0][0], fit_list[0][3], new_haploblock_dict)
+        
+        else:
+
+            new_not_unique_list.append((read_type, read, start_pos))
+
+    return new_haploblock_dict, new_not_unique_list
+
+
 def perform_low_variance_merging(haploblock_dict, not_unique_list): # Calls low_variance_merge_haplotypes, reevaluate_unassigned_reads, split_and_merge_primary_and_secondary_reads, merge_low_overlap_blocks, reevaluate_remaining_ungrouped_reads and perform_ambigous_block_cleanup
 
     if verbosity > 0:
@@ -2678,8 +2677,6 @@ def perform_low_variance_merging(haploblock_dict, not_unique_list): # Calls low_
 
             if maxdiff > diff:
 
-                haploblock_dict, not_unique_list = split_and_merge_primary_and_secondary_reads(0, 1, haploblock_dict, not_unique_list)
-
                 diff += 1
 
                 if verbosity > 2:
@@ -2697,20 +2694,32 @@ def perform_low_variance_merging(haploblock_dict, not_unique_list): # Calls low_
 
                 variant_dict_pre_filter = len(variant_dict)
 
-                haploblock_dict, not_unique_list = split_and_merge_primary_and_secondary_reads(0, 1, haploblock_dict, not_unique_list)
+                print("ungrouped count comparison 3.1:", len(not_unique_list), sum([read_dict[read_type][read][start_pos][3] == "ungrouped" and len(read_dict[read_type][read][start_pos][2]) != 0 for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]]), file=sys.stderr)
+
+                print("block size:", [(block, len(haploblock_dict[block][1]), sum([block == read_dict[read_type][read][start_pos][3] for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]])) for block in haploblock_dict], file=sys.stderr)
 
                 haploblock_dict, not_unique_list = cleanup_blocks(minimum_depth, maxdiff, haploblock_dict, not_unique_list)
+
+                print("ungrouped count comparison 3.4:", len(not_unique_list), sum([read_dict[read_type][read][start_pos][3] == "ungrouped" and len(read_dict[read_type][read][start_pos][2]) != 0 for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]]), file=sys.stderr)
+
+                print("block size:", [(block, len(haploblock_dict[block][1]), sum([block == read_dict[read_type][read][start_pos][3] for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]])) for block in haploblock_dict], file=sys.stderr)
 
                 while True:
 
                     haploblock_dict_pre_filter_2 = len(haploblock_dict)
                     ungrouped_list_pre_filter_2 = len(not_unique_list)
 
+                    low_variance_merge_haplotypes(diff, minimum_overlap, haploblock_dict)
+
                     merge_low_overlap_blocks(maxdiff, haploblock_dict)
 
                     not_unique_list, _ = reevaluate_remaining_ungrouped_reads(haploblock_dict, not_unique_list)
 
-                    if haploblock_dict_pre_filter_2 == len(haploblock_dict) and ungrouped_list_pre_filter_2 == len(not_unique_list):
+                    print("ungrouped count comparison 4:", len(not_unique_list), sum([read_dict[read_type][read][start_pos][3] == "ungrouped" and len(read_dict[read_type][read][start_pos][2]) != 0 for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]]), file=sys.stderr)
+
+                    print("block size:", [(block, len(haploblock_dict[block][1]), sum([block == read_dict[read_type][read][start_pos][3] for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]])) for block in haploblock_dict], file=sys.stderr)
+
+                    if haploblock_dict_pre_filter_2 == len(haploblock_dict) and ungrouped_list_pre_filter_2 == len(not_unique_list) or variant_dict_pre_filter != len(variant_dict):
 
                         break
 
@@ -2721,52 +2730,159 @@ def perform_low_variance_merging(haploblock_dict, not_unique_list): # Calls low_
 
                     if verbosity > 2:
 
-                        print(f'\nContinues low variance merging due to ambigous mapping cleanup causing removal of {variant_dict_pre_filter-len(variant_dict)} additional variant(s).\n')
+                        print(f'\nContinues low variance merging due to ambigous mapping cleanup causing removal of {variant_dict_pre_filter-len(variant_dict)} additional variant(s).\n', file=sys.stderr)
 
                     continue
 
+                haploblock_dict, not_unique_list = split_and_merge_primary_and_secondary_reads(maxdiff, 1, minimum_depth, haploblock_dict, not_unique_list)
+                # haploblock_dict, not_unique_list = split_and_merge_primary_and_secondary_reads(maxdiff, minimum_overlap, 1, haploblock_dict, not_unique_list)
+
+                # test_haploblock_dict(haploblock_dict)
+                # test_not_unique_list(not_unique_list, haploblock_dict)
+
+                # write_bam_file(bam_file)
+                # exit()
+
+                haploblock_dict, not_unique_list = cleanup_blocks(1, maxdiff, haploblock_dict, not_unique_list)
+
+                print("ungrouped count comparison 5:", len(not_unique_list), sum([read_dict[read_type][read][start_pos][3] == "ungrouped" and len(read_dict[read_type][read][start_pos][2]) != 0 for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]]), file=sys.stderr)
+
+                print("block size:", [(block, len(haploblock_dict[block][1]), sum([block == read_dict[read_type][read][start_pos][3] for read_type in read_dict for read in read_dict[read_type] for start_pos in read_dict[read_type][read]])) for block in haploblock_dict], file=sys.stderr)
+
+                # test_haploblock_dict(haploblock_dict)
+                # test_not_unique_list(not_unique_list, haploblock_dict)
+
+                # write_bam_file(bam_file)
+                # exit()
+                
                 while True:
-
-                    not_unique_list = cleanup_variants(haploblock_dict)
-
-                    not_unique_list = make_unphasable_consensus(haploblock_dict, not_unique_list)
-                    
-                    merge_low_overlap_blocks(0, haploblock_dict)
 
                     haploblock_dict_pre_filter_2 = len(haploblock_dict)
                     ungrouped_list_pre_filter_2 = len(not_unique_list)
 
                     not_unique_list, _ = reevaluate_remaining_ungrouped_reads(haploblock_dict, not_unique_list)
 
-                    haploblock_dict, not_unique_list = split_and_merge_primary_and_secondary_reads(0, 1, haploblock_dict, not_unique_list)
-
-                    haploblock_dict, not_unique_list = cleanup_blocks(1, maxdiff, haploblock_dict, not_unique_list)
-
                     merge_low_overlap_blocks(maxdiff, haploblock_dict)
 
+                    low_variance_merge_haplotypes(diff, minimum_overlap, haploblock_dict)
+
+                    if haploblock_dict_pre_filter_2 == len(haploblock_dict) and ungrouped_list_pre_filter_2 == len(not_unique_list) or variant_dict_pre_filter != len(variant_dict):
+
+                        break
+
+                # test_haploblock_dict(haploblock_dict)
+                # test_not_unique_list(not_unique_list, haploblock_dict)
+                # test_variant_dict()
+
+                # write_bam_file(bam_file)
+                # exit()
+
+                if variant_dict_pre_filter != len(variant_dict):
+
+                    if verbosity > 2:
+
+                        print(f'\nContinues low variance merging due to ambigous mapping cleanup causing removal of {variant_dict_pre_filter-len(variant_dict)} additional variant(s).\n', file=sys.stderr)
+
+                    continue
+
+                not_unique_list = cleanup_variants(haploblock_dict)
+
+                not_unique_list = make_unphasable_consensus(haploblock_dict, not_unique_list, False)
+
+                # test_haploblock_dict(haploblock_dict)
+                # test_not_unique_list(not_unique_list, haploblock_dict)
+                # test_variant_dict()
+
+                # write_bam_file(bam_file)
+                # exit()
+
+                i = 1
+
+                while i < max_cleanup_iterations:
+
+                    haploblock_dict_pre_filter = len(haploblock_dict)
+                    ungrouped_list_pre_filter = len(not_unique_list)
+
+                    split_blocks(minimum_depth, haploblock_dict, not_unique_list)
+
+                    # haploblock_dict, not_unique_list = split_and_merge_primary_and_secondary_reads(0, 1, 1, haploblock_dict, not_unique_list)
+
+                    # haploblock_dict, not_unique_list = cleanup_blocks(1, maxdiff, haploblock_dict, not_unique_list)
+
+                    test_haploblock_dict(haploblock_dict)
+                    test_not_unique_list(not_unique_list, haploblock_dict)
+
+                    while True:
+
+                        haploblock_dict_pre_filter_2 = len(haploblock_dict)
+                        ungrouped_list_pre_filter_2 = len(not_unique_list)
+
+                        # merge_low_overlap_blocks(maxdiff, haploblock_dict)
+                        merge_low_overlap_blocks(0, haploblock_dict)
+
+                        test_haploblock_dict(haploblock_dict)
+
+                        not_unique_list, _ = reevaluate_remaining_ungrouped_reads(haploblock_dict, not_unique_list)
+
+                        test_haploblock_dict(haploblock_dict)
+
+                        if haploblock_dict_pre_filter_2 == len(haploblock_dict) and ungrouped_list_pre_filter_2 == len(not_unique_list):
+
+                            break
+
+                    if variant_dict_pre_filter != len(variant_dict):
+
+                        break
+                        
                     not_unique_list = cleanup_variants(haploblock_dict)
 
-                    not_unique_list = make_unphasable_consensus(haploblock_dict, not_unique_list)
+                    not_unique_list = make_unphasable_consensus(haploblock_dict, not_unique_list, False)
 
-                    if haploblock_dict_pre_filter_2 == len(haploblock_dict) and ungrouped_list_pre_filter_2 == len(not_unique_list):
-                
+                    print(haploblock_dict_pre_filter, len(haploblock_dict), ungrouped_list_pre_filter, len(not_unique_list), file=sys.stderr)
+
+                    if haploblock_dict_pre_filter == len(haploblock_dict) and ungrouped_list_pre_filter == len(not_unique_list):
+
+                        break
+
+                    i += 1
+                    
+                test_haploblock_dict(haploblock_dict)
+                test_not_unique_list(not_unique_list, haploblock_dict)
+
+                if variant_dict_pre_filter != len(variant_dict):
+
+                    if verbosity > 2:
+
+                        print(f'\nContinues low variance merging due to ambigous mapping cleanup causing removal of {variant_dict_pre_filter-len(variant_dict)} additional variant(s).\n', file=sys.stderr)
+
+                    continue
+
+                split_blocks(minimum_depth, haploblock_dict, not_unique_list)
+
+                while True:
+
+                    haploblock_dict_pre_filter = len(haploblock_dict)
+                    ungrouped_list_pre_filter = len(not_unique_list)
+
+                    haploblock_dict, not_unique_list = final_merging(haploblock_dict, not_unique_list)
+
+                    if haploblock_dict_pre_filter == len(haploblock_dict) and ungrouped_list_pre_filter == len(not_unique_list):
+
                         break
 
                 if variant_dict_pre_filter != len(variant_dict):
 
                     if verbosity > 2:
 
-                        print(f'\nContinues low variance merging due to ambigous mapping cleanup causing removal of {variant_dict_pre_filter-len(variant_dict)} additional variant(s).\n')
+                        print(f'\nContinues low variance merging due to ambigous mapping cleanup causing removal of {variant_dict_pre_filter-len(variant_dict)} additional variant(s).\n', file=sys.stderr)
 
                     continue
 
-                else:
+                if verbosity > 2:
 
-                    if verbosity > 2:
+                    print(f'\nAfter {count-1} iterations the block count is no longer decreasing, so the process is stopped.\n', file=sys.stderr)
 
-                        print(f'\nAfter {count-1} iterations the block count is no longer decreasing, so the process is stopped.\n', file=sys.stderr)
-
-                    break
+                break
 
         else:
 
@@ -3089,9 +3205,9 @@ def choose_primary_or_secondary_reads(hap_dict): # Calls cleanup_hap_dict
 
                     merge_status = "error"
 
-                if merge_status == "within":
+                if merge_status in ["within", "error"]:
 
-                    if min(haploblock_dict[block2][0]) < min(haploblock_dict[block1][0]) and max(haploblock_dict[block1][0]) < max(haploblock_dict[block2][0]):
+                    if merge_status == "error" and len(haploblock_dict[block2][0]) > len(haploblock_dict[block1][0]) or merge_status == "within" and min(haploblock_dict[block2][0]) < min(haploblock_dict[block1][0]) and max(haploblock_dict[block1][0]) < max(haploblock_dict[block2][0]):
 
                         block1, block2 = block2, block1
 
@@ -3119,7 +3235,7 @@ def choose_primary_or_secondary_reads(hap_dict): # Calls cleanup_hap_dict
 
                     hap_dict[block2][1] = new_read_dict
                     hap_dict[block2][2] = new_read_list
-
+                
                 else:
 
                     for read_type, read, start_pos in hap_dict[block1][0][block2][2]+hap_dict[block2][0][block1][2]:
@@ -3145,8 +3261,6 @@ def choose_primary_or_secondary_reads(hap_dict): # Calls cleanup_hap_dict
                         if merge_status == "error":
 
                             print(f'  There is seemingly an error.', file=sys.stderr)
-
-                            continue
 
                         elif merge_status == "within":
 
@@ -3178,12 +3292,18 @@ def choose_primary_or_secondary_reads(hap_dict): # Calls cleanup_hap_dict
 
                             print(f'  {block1} and {block2} seemingly come from the same haplotype and will therefore eventually be merged. They have {merge_status} and are therefore most likely a large {indel}.', file=sys.stderr)
 
+                    # hap_dict[block1][0][block2][2] = []
+                    # hap_dict[block2][0][block1][2] = []
+
                 else:
 
                     print(f'  {block1} and {block2} seemingly come from the same haplotype, but only {total_shared_reads}/{total_paired_reads} = {(total_shared_reads/total_paired_reads)*100}% of the possible paired reads connect the two blocks, so they should not be merged.', file=sys.stderr)
 
-                    hap_dict[block1][0][block2] = [hap_dict[block1][0][block2][0], {}, []]
-                    hap_dict[block2][0][block1] = [hap_dict[block2][0][block1][0], {}, []]
+                    # hap_dict[block1][0][block2] = [hap_dict[block1][0][block2][0], {}, []]
+                    # hap_dict[block2][0][block1] = [hap_dict[block2][0][block1][0], {}, []]
+                
+                hap_dict[block1][0][block2][2] = []
+                hap_dict[block2][0][block1][2] = []
 
             if verbosity > 3:
 
@@ -3419,6 +3539,25 @@ def cleanup_low_depth_reads(hap_dict, not_unique_list): # Calls reintroduce_read
 
             print("\t", block, len(hap_dict[block][2]), [(hap, hap_dict[block][0][hap][0]) for hap in hap_dict[block][0]], file=sys.stderr)
 
+def update_block_info(block, hap_dict, haploblock_dict):
+    
+    new_read_dict = hap_dict[block][1].copy()
+    new_read_list = hap_dict[block][2].copy()
+
+    for sec_block in hap_dict[block][0]:
+
+        new_read_dict.update(hap_dict[block][0][sec_block][1].copy())
+        new_read_list += hap_dict[block][0][sec_block][2]
+
+    if block not in haploblock_dict:
+
+        haploblock_dict[block] = [None, None]
+
+    haploblock_dict[block][0] = new_read_dict
+    haploblock_dict[block][1] = new_read_list
+
+    return new_read_dict, new_read_list
+
 def update_haploblock_dict(hap_dict, merges, haploblock_dict):
 
     if verbosity > 0:
@@ -3435,45 +3574,11 @@ def update_haploblock_dict(hap_dict, merges, haploblock_dict):
 
                 del haploblock_dict[block]
 
-            # merged_list = update_merge_list(block, block, haploblock_dict, merged_list)
-
             continue
 
-        new_read_dict = hap_dict[block][1].copy()
-        new_read_list = hap_dict[block][2].copy()
-
-        for sec_block in hap_dict[block][0]:
-
-            # if sec_block == "ungrouped": # FIXME: test
-
-            #     for read_type, read, start_pos in hap_dict[block][0][sec_block][2]:
-
-            #         read_dict[read_type][read][start_pos][3] = "ungrouped"
-
-            #         not_unique_list.append((read_type, read, start_pos))
-
-
-            #     continue
-
-            # Changes the secondary reads to primary reads.
-
-            # for read_type, read, start_pos in hap_dict[block][0][sec_block][2]:
-
-            #     read_dict[read_type][read][start_pos][0].flag &= ~pysam.FSECONDARY
-
-            new_read_dict.update(hap_dict[block][0][sec_block][1].copy())
-            new_read_list += hap_dict[block][0][sec_block][2]
-
-        if block not in haploblock_dict:
-
-            haploblock_dict[block] = [None, None]
-
-        haploblock_dict[block][0] = new_read_dict
-        haploblock_dict[block][1] = new_read_list
+        update_block_info(block, hap_dict, haploblock_dict)
 
         print(f'{block} is updated.', file=sys.stderr)
-
-        # print(block, len(hap_dict[block][2]), [(hap, hap_dict[block][0][hap][0]) for hap in hap_dict[block][0]], len(new_read_list), file=sys.stderr)
 
     print(merges, file=sys.stderr)
 
@@ -3493,11 +3598,25 @@ def update_haploblock_dict(hap_dict, merges, haploblock_dict):
 
             continue
 
-        if merge_status == "within":
+        if merge_status == "within": # FIXME: should it not be handled somehow?
 
             i += 1
 
             continue
+
+        if merge_status == "overlap":
+
+            # This section captures the situation where bad merging due to a homogeneous region has merged secondary reads where they do not belong. 
+
+            overlap, identity, mismatch_list = compare_haploblocks(block1, block2, haploblock_dict)
+
+            if sum([base1 not in ["I", "D", "no overlap", "overlap", "within"] and base2 not in ["I", "D", "no overlap", "overlap", "within"] and sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[block1][1]]) > minimum_coverage and sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[block2][1]]) > minimum_coverage for pos, base1, base2 in mismatch_list]) == 0:
+
+                merge_haploblocks(block1, block2, mismatch_list, haploblock_dict)
+
+                del merges[i]
+
+                continue
 
         for j in range(i+1, len(merges)):
 
@@ -3507,13 +3626,33 @@ def update_haploblock_dict(hap_dict, merges, haploblock_dict):
 
             if block1 not in haploblock_dict or block2 not in haploblock_dict:
 
+                if block1 in haploblock_dict:
+
+                    for read_type, read, start_pos in hap_dict[block1][0][block2][2]:
+
+                        read_dict[read_type][read][start_pos][3] = "ungrouped"
+
+                    del hap_dict[block1][0][block2]
+
+                    update_block_info(block1, hap_dict, haploblock_dict)
+
+                if block2 in haploblock_dict:
+
+                    for read_type, read, start_pos in hap_dict[block2][0][block1][2]:
+
+                        read_dict[read_type][read][start_pos][3] = "ungrouped"
+
+                    del hap_dict[block2][0][block1]
+
+                    update_block_info(block2, hap_dict, haploblock_dict)
+
                 del merges[j]
 
                 break
 
             if merge_status == "within":
 
-                continue
+                continue # FIXME: should it not be handled somehow?
 
             if block1 in merges[i] or block2 in merges[i]:
 
@@ -3523,15 +3662,33 @@ def update_haploblock_dict(hap_dict, merges, haploblock_dict):
 
                     merges[i] = merges[j]
 
-                    del merges[j]
+                    block1, block2, _, _ = merges[j]
 
-                    break
+                    for read_type, read, start_pos in hap_dict[block1][0][block2][2] + hap_dict[block2][0][block1][2]:
 
-                else:
+                        read_dict[read_type][read][start_pos][3] = "ungrouped"
 
-                    del merges[j]
+                    del hap_dict[block1][0][block2]
+                    del hap_dict[block2][0][block1]
 
-                    break
+                    update_block_info(block1, hap_dict, haploblock_dict)
+                    update_block_info(block2, hap_dict, haploblock_dict)
+
+                block1, block2, _, _ = merges[j]
+
+                for read_type, read, start_pos in hap_dict[block1][0][block2][2] + hap_dict[block2][0][block1][2]:
+
+                    read_dict[read_type][read][start_pos][3] = "ungrouped"
+
+                del hap_dict[block1][0][block2]
+                del hap_dict[block2][0][block1]
+
+                update_block_info(block1, hap_dict, haploblock_dict)
+                update_block_info(block2, hap_dict, haploblock_dict)
+
+                del merges[j]
+
+                break
 
         if not removed:
 
@@ -3556,98 +3713,6 @@ def update_haploblock_dict(hap_dict, merges, haploblock_dict):
         else:
 
             print("Something has gone wrong...", file=sys.stderr)
-
-        # if merge_list[-1][2] == "within":
-
-        #     hap1 = merge_list[-1][0]
-        #     hap2 = merge_list[-1][1]
-
-        #     primary_read_list = [read for _, read, _ in hap_dict[hap1][0][hap2][2]]
-
-        #     read_variant_dict = {}
-        #     read_list = []
-
-        #     for read_type, read, start_pos in hap_dict[hap2][2]:
-
-        #         if read not in primary_read_list:
-
-        #             read_variant_dict.update(read_dict[read_type][read][start_pos][2].copy())
-        #             read_list.append((read_type, read, start_pos))
-
-        #     fit_list = make_fit_list(read_variant_dict, haploblock_dict, maxdiff, 1)
-
-        #     print(fit_list, file=sys.stderr) # FIXME: test
-
-        # else:
-
-        #     hap1 = merge_list[-1][0]
-        #     hap2 = merge_list[-1][1]
-
-        #     reads_to_ungroup = []
-
-        #     primary_read_list = [read for _, read, _ in hap_dict[hap1][0][hap2][2]]
-
-        #     read_variant_dict = {}
-        #     read_list = []
-
-        #     for read_type, read, start_pos in hap_dict[hap2][2]:
-
-        #         if read not in primary_read_list:
-
-        #             read_variant_dict.update(read_dict[read_type][read][start_pos][2].copy())
-        #             read_list.append((read_type, read, start_pos))
-
-        #         else:
-
-        #             reads_to_ungroup.append((read_type, read, start_pos))
-
-        #     for sec_block in hap_dict[hap2][0]:
-
-        #         reads_to_ungroup += hap_dict[hap2][0][sec_block][2]
-
-        #     temp_haploblock_dict = {}
-        #     temp_haploblock_dict[hap1] = [read_variant_dict, read_list]
-
-        #     primary_read_list = [read for _, read, _ in hap_dict[hap2][0][hap1][2]]
-
-        #     read_variant_dict = {}
-        #     read_list = []
-
-        #     for read_type, read, start_pos in hap_dict[hap1][2]:
-
-        #         if read not in primary_read_list:
-
-        #             read_variant_dict.update(read_dict[read_type][read][start_pos][2].copy())
-        #             read_list.append((read_type, read, start_pos))
-
-        #         else:
-
-        #             reads_to_ungroup.append((read_type, read, start_pos))
-
-        #     for sec_block in hap_dict[hap1][0]:
-
-        #         reads_to_ungroup += hap_dict[hap1][0][sec_block][2]
-
-        #     fit_list = make_fit_list(read_variant_dict, temp_haploblock_dict, 0, 1)
-
-        #     print(fit_list, file=sys.stderr)
-
-        #     if len(fit_list) == 1:
-
-        #         haploblock_dict[hap1] = temp_haploblock_dict[hap1]
-        #         haploblock_dict[hap2] = [read_variant_dict, read_list]
-
-        #         for read_type, read, start_pos in reads_to_ungroup:
-
-        #             read_dict[read_type][read][start_pos][3] = "ungrouped"
-
-        #         if verbosity > 2:
-
-        #             print(f"{hap1} and {hap2} is merged in update haploblocks. Overlap is {fit_list[0][1]} and mismatch count is {len(fit_list[0][3])}. {fit_list[0][3]}", file=sys.stderr)
-
-        #         merge_haploblocks(hap1, hap2, fit_list[0][3], haploblock_dict)
-
-        #         del merge_list[-1]
 
     print(merge_list, file=sys.stderr)
 
@@ -3698,7 +3763,7 @@ def update_merge_list(hap1, hap2, haploblock_dict, merged_list):
 
                 merge_status = "no overlap"
 
-                if max(list(haploblock_dict[block2][0].keys())) < min(list(haploblock_dict[block1][0].keys())):
+                if merged_list[i][2] == "within" and max(list(haploblock_dict[block2][0].keys())) < min(list(haploblock_dict[block1][0].keys())):
 
                     merged_list[i][0], merged_list[i][1] = merged_list[i][1], merged_list[i][0]
 
@@ -3714,7 +3779,7 @@ def update_merge_list(hap1, hap2, haploblock_dict, merged_list):
 
                 merge_status = "overlap"
 
-                if (min(list(haploblock_dict[block2][0].keys())) < min(list(haploblock_dict[block1][0].keys())) and min(list(haploblock_dict[block1][0].keys())) < max(list(haploblock_dict[block2][0].keys())) and max(list(haploblock_dict[block2][0].keys())) < max(list(haploblock_dict[block1][0].keys()))):
+                if merged_list[i][2] == "within" and (min(list(haploblock_dict[block2][0].keys())) < min(list(haploblock_dict[block1][0].keys())) and min(list(haploblock_dict[block1][0].keys())) < max(list(haploblock_dict[block2][0].keys())) and max(list(haploblock_dict[block2][0].keys())) < max(list(haploblock_dict[block1][0].keys()))):
 
                     merged_list[i][0], merged_list[i][1] = merged_list[i][1], merged_list[i][0]
 
@@ -3766,7 +3831,8 @@ def stitch_blocks(haploblock_dict, maxdiff, merged_list): # Calls compare_haplob
 
             overlap, identity, mismatch_list = compare_haploblocks(hap1, hap2, haploblock_dict)
 
-            if overlap > 0 and 0.5 <= identity/overlap:
+            if overlap > 0 and minimum_identity <= identity/overlap:
+            # if overlap > 0:
 
                 print(hap1, hap2, overlap, identity, mismatch_list, [base1 not in ["I", "D", "no overlap", "overlap", "within"] and base2 not in ["I", "D", "no overlap", "overlap", "within"] and sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap1][1]]) > minimum_count and sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap2][1]]) > minimum_count for pos, base1, base2 in mismatch_list], [(base1 not in ["I", "D", "no overlap", "overlap", "within"], base2 not in ["I", "D", "no overlap", "overlap", "within"], sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap1][1]]), sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap2][1]])) for pos, base1, base2 in mismatch_list], file=sys.stderr)
                 print(hap1, hap2, overlap, identity, mismatch_list, [base1 not in ["I", "D", "no overlap", "overlap", "within"] and base2 not in ["I", "D", "no overlap", "overlap", "within"] and sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap1][1]]) > minimum_coverage and sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap2][1]]) > minimum_coverage for pos, base1, base2 in mismatch_list], [(base1 not in ["I", "D", "no overlap", "overlap", "within"], base2 not in ["I", "D", "no overlap", "overlap", "within"], sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap1][1]]), sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap2][1]])) for pos, base1, base2 in mismatch_list], file=sys.stderr)
@@ -3776,7 +3842,7 @@ def stitch_blocks(haploblock_dict, maxdiff, merged_list): # Calls compare_haplob
                 print(hap1, hap2, overlap, identity, len(mismatch_list), file=sys.stderr)
 
             # if overlap > 0 and 0.5 <= identity/overlap and len(mismatch_list) <= maxdiff:
-            if overlap > 0 and len(mismatch_list) <= maxdiff and (0.5 <= identity/overlap or sum([base1 not in ["I", "D", "no overlap", "overlap", "within"] and base2 not in ["I", "D", "no overlap", "overlap", "within"] and sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap1][1]]) > minimum_coverage and sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap2][1]]) > minimum_coverage for pos, base1, base2 in mismatch_list]) == 0):
+            if overlap > 0 and len(mismatch_list) <= maxdiff and (minimum_identity <= identity/overlap or sum([base1 not in ["I", "D", "no overlap", "overlap", "within"] and base2 not in ["I", "D", "no overlap", "overlap", "within"] and sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap1][1]]) > minimum_coverage and sum([pos in read_dict[read_type][read][start_pos][2] for read_type, read, start_pos in haploblock_dict[hap2][1]]) > minimum_coverage for pos, base1, base2 in mismatch_list]) == 0):
 
                 if len(mismatch_list) > 0:
 
@@ -4340,7 +4406,7 @@ def remove_removed_read_variants(haploblock_dict): # Calls remove_variant and cl
 
         if len(haploblock_dict[block][0]) == 0:
 
-            for read_type, read, start_pos in haploblock_dict[block][0]:
+            for read_type, read, start_pos in haploblock_dict[block][1]:
 
                 # print(read_dict[read_type][read][start_pos][1], read_dict[read_type][read][start_pos][2], read_dict[read_type][read][start_pos][3])
 
@@ -5763,25 +5829,9 @@ test_haploblock_dict(haploblock_dict)
 test_not_unique_list(not_unique_list, haploblock_dict)
 test_variant_dict()
 
-hap_names = list(haploblock_dict.keys())
-
-for i in range(len(hap_names)):
-    for j in range(i+1, len(hap_names)):
-
-        block1 = hap_names[i]
-        block2 = hap_names[j]
-
-        overlap, identity, mismatch_list = compare_haploblocks(block1, block2, haploblock_dict)
-
-        print(block1, block2, overlap, identity, file=sys.stderr)
-
-        if overlap > 0 and identity/overlap > 0.5:
-
-            print(block1, block2, [(pos, base1, sum([pos in read_dict[read_type][read][start_pos][2] and read_dict[read_type][read][start_pos][2][pos] == base1 for read_type, read, start_pos in haploblock_dict[block1][1]]), base2, sum([pos in read_dict[read_type][read][start_pos][2] and read_dict[read_type][read][start_pos][2][pos] == base2 for read_type, read, start_pos in haploblock_dict[block2][1]]), [(base, len(variant_dict[pos][base])) for base in variant_dict[pos]]) for pos, base1, base2 in mismatch_list], file=sys.stderr)
-
 # write_bam_file("secondary_filtered_post_low_variance_merging".join(bam_file.split("secondary_filtered")))
-write_bam_file(bam_file)
-exit()
+# write_bam_file(bam_file)
+# exit()
 
 hap_dict, merge_list, not_unique_list, unchosen_list = reevaluate_secondary_reads(not_unique_list, haploblock_dict)
 
