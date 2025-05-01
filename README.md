@@ -36,7 +36,7 @@ Relevant parameters mention in the algorithm description:
 * minimum_identity - The minimum required identity to merge two blocks with high confidence SNPs. Used in final merging. (DEFAULT: 0.9)
 * minimum_pct_overlap - The minimal identical percentage overlap between blocks or between read and block, used for final merging. (DEFAULT: 0.5)
 
-![NanoCAH workflow](PLOTS/NanoCAH workflow.png)
+![NanoCAH workflow](./PLOTS/NanoCAH workflow.png)
 
 ##### Creating data dictionaries
 
