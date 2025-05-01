@@ -36,7 +36,7 @@ Relevant parameters mention in the algorithm description:
 * minimum_identity - The minimum required identity to merge two blocks with high confidence SNPs. Used in final merging. (DEFAULT: 0.9)
 * minimum_pct_overlap - The minimal identical percentage overlap between blocks or between read and block, used for final merging. (DEFAULT: 0.5)
 
-![NanoCAH workflow](./PLOTS/NanoCAH workflow.png)
+![NanoCAH workflow](./PLOTS/NanoCAH%20workflow.png)
 
 ##### Creating data dictionaries
 
@@ -99,17 +99,3 @@ Since this algorithm is very new and is specialized to work on data available to
 
 I, Laura Skak, am a recent graduate of bioinformatics from Aarhus University and now work as a PhD student at MOMA in Aarhus, Denmark working on exploring the epigenetics of individuals with sex chromosome aneuploidies.
 
-
-
-The optional input parameters:
-
-* maximum_diff - The maximal SNP difference, used for merging blocks. (DEFAULT: 8)
-* minimum_overlap - The minimal identical overlap between blocks or between a read and a block, used for low variance merging. (DEFAULT: 3)
-* minimum_count - The minimum SNP representation count for a SNP to remain usable. (DEFAULT: 2)
-* minimum_depth - The minimum read count at a particular SNP position, is used for block splitting. (DEFAULT: 3)
-* minimum_coverage - The minimum read count in one block, is used in read selection. (DEFAULT: 5)
-* max_iterations - Implemented to prevent infinite while loops. (DEFAULT: 5)
-* max_variance - The maximal allowed variance in a usable SNP. Is used to remove SNPs that are heterozygotic due to being located in an error-prone region. (DEFAULT: 0.5)
-
-* minimum_identity - The minimum required identity to merge two blocks with high confidence SNPs. Used in final merging. (DEFAULT: 0.9)
-* minimum_pct_overlap - The minimal identical percentage overlap between blocks or between read and block, used for final merging. (DEFAULT: 0.5)
