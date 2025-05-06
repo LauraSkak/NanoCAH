@@ -36,13 +36,13 @@ Relevant parameters mention in the algorithm description:
 * minimum_identity - The minimum required identity to merge two blocks with high confidence SNPs. Used in final merging. (DEFAULT: 0.9)
 * minimum_pct_overlap - The minimal identical percentage overlap between blocks or between read and block, used for final merging. (DEFAULT: 0.5)
 
-![NanoCAH workflow](./PLOTS/NanoCAH%20workflow.png)
+![NanoCAH workflow](./PLOTS/NanoCAH_workflow.png)
 
 ##### Creating data dictionaries
 
 All reads are first loaded into a read dictionary. The read dictionary contains base information for all positions, which have variable base composition. A variant dictionary is created containing information from each position with variable base composition.
 
-The variant dictionary is then filtered for low coverage SNPs. This means; if a base is found in less than the minimum count reads, then the base is removed from the variant dictionary for that position. If the position now only contains reads that match the reference, then the position is deemed unusable and the position is removed from the variant dictionary. Only read information included in the variant dictionary is considered in the subsequent grouping.
+The variant dictionary is then filtered for low coverage SNPs. This means; if a base is found in less than the minimum count reads, then the base is removed from the variant dictionary for that position. If the position now only contains reads with match bases, then the position is deemed unusable and is removed from the variant dictionary. Only read information included in the variant dictionary is considered in the subsequent grouping.
 
 ... missing add a figure showing this initial removal of unusable variants ...
 
