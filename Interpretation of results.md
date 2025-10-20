@@ -28,20 +28,20 @@ In this following section we will show you real-world examples of results obtain
 
 In the case of a large deletion in one or more of the haplotypes, you will see a gap in coverage.
 
-![Case with deletion, without NanoCAH](./PLOTS/deletion_case_results_without_NanoCAH)
+![Case with deletion, without NanoCAH](./PLOTS/deletion_case_results_without_NanoCAH.png)
 
-![Case with deletion, with NanoCAH](./PLOTS/deletion_case_results_with_NanoCAH)
+![Case with deletion, with NanoCAH](./PLOTS/deletion_case_results_with_NanoCAH.png)
 
 When evaluating the alignment results obtained without NanoCAH, you see this aforementioned gap in coverage. If variants are called on this type of alignment, you can often run into problems where pathogenic variants are not called due to low coverage.
 
 #### An insertion
 
-![Case with insertion, without NanoCAH](./PLOTS/insertion_case_results_without_NanoCAH)
+![Case with insertion, without NanoCAH](./PLOTS/insertion_case_results_without_NanoCAH.png)
 
-![Case with insertion, with NanoCAH](./PLOTS/insertion_case_results_with_NanoCAH)
+![Case with insertion, with NanoCAH](./PLOTS/insertion_case_results_with_NanoCAH.png)
 
 #### A chimera
 
-![Case with chimera, without NanoCAH](./PLOTS/chimera_case_results_without_NanoCAH)
+![Case with chimera, without NanoCAH](./PLOTS/chimera_case_results_without_NanoCAH.png)
 
-![Case with chimera, with NanoCAH](./PLOTS/chimera_case_results_with_NanoCAH)
+![Case with chimera, with NanoCAH](./PLOTS/chimera_case_results_with_NanoCAH.png)
