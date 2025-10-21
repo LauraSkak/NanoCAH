@@ -1,10 +1,6 @@
 # NanoCAH
 NanoCAH is a local re-phaser, built to deal with difficult-to-phase regions with segmental duplications using Oxford Nanopore long-read DNA sequencing data.
 
-... image ...
-
-** Table of contents måske ***
-
 ### Introduction
 
 This software was developed to resolve the notoriously difficult gene region around *CYP21A2*, in which pathogenic variants cause congenital adrenal hyperplasia (CAH). The *CYP21A2* gene is difficult to resolve due to the homologous pseudogene *CYP21A1P* located just upstream of the active *CYP21A2* gene. The close proximity and high homology between the two often make read mapping to the region ambiguous. Additionally, high genomic instability in the area results in large insertions, deletions, and the formation of chimeric genes. All these factors lead to variant calls from this region often being unreliable using standard tools. To solve this problem, we run basecalled and aligned Oxford Nanopore long-read DNA sequencing data through the NanoCAH algorithm before variant calling. By employing this specialized bioinformatic algorithm, it is possible to accurately distinguish between reads that map to the active CYP21A2 gene and the reads that map to the pseudogene, determine the presence of large deletion, insertions or chimeric genes, and accurately phase reads, thereby making variant calling in the region much more reliable.
@@ -30,8 +26,6 @@ samtools index -@ {thread_count} {alignment_outfile}
 ```bash
 python NanoCAH.py -i {alignment_file} -o {bam_outfile_prefix}.bam -r {reference} -s {span} -a {asm_outfile_prefix}.fasta {extra_flags}
 ```
-
-** mangler **
 
 ### The input data
 
