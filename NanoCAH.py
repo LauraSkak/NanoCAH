@@ -63,7 +63,7 @@ parser.add_argument("-a","--assembly",
 
 parser.add_argument("--max_diff",
                     type=int,
-                    default = 2,
+                    default = 10,
                     help = "The maximum allowed SNP differences between blocks. Is used for low variance merging.")
 
 parser.add_argument("--minimum_count",
@@ -101,6 +101,11 @@ parser.add_argument("--maximal_iterations",
                     default = 5,
                     help = "The maximal allowed variance in a usable SNP.")
 
+parser.add_argument("--maximal_block_overlap",
+                    type=int,
+                    default = 1000000,
+                    help = "The maximal allowed overlap between two blocks to be merged.")
+
 parser.add_argument("--minimum_pct_overlap",
                     type=int,
                     default = 0.5,
@@ -120,7 +125,7 @@ parser.add_argument("--output_raw_assemblies",
 
 parser.add_argument("--output_intermediate_states",
                     action='store_true',
-                    help = "This is primarily used for testing, but can sometimes be informative to understand the process of NanoCAH read filtering.") # FIXME: is not implemented
+                    help = "This is primarily used for testing, but can sometimes be informative to understand the process of NanoCAH read filtering. It will produce five intermediate alignment outputs; after initial grouping, after no-variance merging, after low variance merging, after read selection and after haplotype creation.") # FIXME: is not implemented
 
 parser.add_argument("-v", "--verbosity",
                     type = int,
@@ -165,8 +170,9 @@ expected_polyploidy = 2 # FIXME: MISSING ARG. Not implemented
 show_removed = args.show_removed_reads
 verbosity = args.verbosity
 min_overlap = 1000 # FIXME: MISSING ARG.
-max_overlap = 1000000 # FIXME: MISSING ARG.
+# max_overlap = 1000000 # FIXME: MISSING ARG.
 overlap_jump = 500 # FIXME: MISSING ARG.
+min_overlap_identity = 0.75
 max_error_length = 10000 # FIXME: MISSING ARG.
 max_variance = 0.30 # FIXME: MISSING ARG.
 minimum_pct_common_reads = 0.05 # FIXME: MISSING ARG.
@@ -1090,6 +1096,8 @@ def split_blocks(minimum_depth, haploblock_dict, not_unique_list): # Calls reint
 
             blocks.append([start, end, {}, [], haploblock_dict[block][2], haploblock_dict[block][3], all_reads])
 
+        print(f'   {block}', [(block[0], block[1], len(block[2]), len(block[3])) for block in blocks], len(haploblock_dict[block][1]), len(haploblock_dict[block][0]), file=sys.stderr)
+
         if len(blocks) > 1:
 
             new_blocks = []
@@ -1128,6 +1136,8 @@ def split_blocks(minimum_depth, haploblock_dict, not_unique_list): # Calls reint
             new_blocks.append(blocks[-1])
 
             blocks = new_blocks
+
+        print(f'   {block}', [(block[0], block[1], len(block[2]), len(block[3])) for block in blocks], len(haploblock_dict[block][1]), len(haploblock_dict[block][0]), file=sys.stderr)
 
         for read_type, read, start_pos in haploblock_dict[block][1]:
 
@@ -4095,6 +4105,30 @@ def reevaluate_ungrouped_primary_and_secondary_reads(haploblock_dict, merged_lis
                                 new_not_unique_list.append(("s", read, start_pos_2))
 
                         read_dict["p"][read]["-"][3] = "removed"
+                
+                # FIXME: Added because I had a problem with multimapped reads that should be kept are disappearing... Seeing if this solves the problem.
+                elif len(fit_lists) == 2 and sum([len(fit_lists[i][1]) == 1 for i in range(len(fit_lists))]) == 2 and sum([sorted([fit_lists[0][1][0][0], fit_lists[1][1][0][0]]) == sorted(merged_list[i][:2]) and merged_list[i][2] != "within" for i in range(len(merged_list))]) == 1:
+
+                    # FIXME: This means that the multimapped read is only mapping to the two sides of blocks that should be merged. At the same time they are not deemed to be two blocks, where one is within, because that may cause problems. It should be researched if this is in fact true or just an incorrect assumption.
+
+                    for i in range(len(fit_lists)):
+
+                        if fit_lists[i][0] == "-":
+
+                            read_type = "p"
+                            start_pos = fit_lists[i][0]
+
+                        else:
+
+                            read_type = "s"
+                            start_pos = fit_lists[i][0]
+
+                        if read_dict[read_type][read][start_pos][3] == "ungrouped":
+
+                            block = fit_lists[i][1][0][0]
+
+                            reintroduce_read_to_variant_dict(read_type, read, start_pos)
+                            add_read_to_haploblock(read_type, read, start_pos, block, fit_lists[i][1][0][3], haploblock_dict)
 
                 # elif sum([len(fit_lists[i][1]) == 1 for i in range(len(fit_lists))]) == 2 and fit_lists[0][1][0][0] != fit_lists[1][1][0][0]: # FIXME: created a problem with a within group, which stays
 
@@ -5050,6 +5084,10 @@ def create_haplo_variant_dict(): # Calls get_reference_sequence, make_fit_list a
 
 def find_best_Levenshtein_distance(haplo_asm, left_hap, right_hap):
 
+    max_overlap = min([len(haplo_asm[left_hap]["asm"]), len(haplo_asm[right_hap]["asm"]), args.maximal_block_overlap])
+
+    print(max_overlap)
+
     approximate_best_overlap = None
     approximate_best_distance = max_overlap
 
@@ -5062,9 +5100,9 @@ def find_best_Levenshtein_distance(haplo_asm, left_hap, right_hap):
 
         if verbosity > 4:
 
-            print(overlap, Levenshtein.distance(left_flank, right_flank), Levenshtein.ratio(left_flank, right_flank), file=sys.stderr)
+            print(overlap, distance, Levenshtein.ratio(left_flank, right_flank), file=sys.stderr)
 
-        if distance < approximate_best_distance:
+        if distance < approximate_best_distance and Levenshtein.ratio(left_flank, right_flank) > min_overlap_identity: # FIXME: maybe this should just be ratio-based
 
             approximate_best_overlap = overlap
             approximate_best_distance = distance
@@ -5604,8 +5642,11 @@ haploblock_dict, not_unique_list, hap_count = add_reads_to_haplotype_dict()
 haploblock_dict, not_unique_list = perform_no_variance_merging(haploblock_dict, not_unique_list)
 
 haploblock_dict, not_unique_list = perform_low_variance_merging(haploblock_dict, not_unique_list)
-
+# test_haploblock_dict(haploblock_dict)
+# test_variant_dict()
 hap_dict, merge_list, not_unique_list, unchosen_list = reevaluate_secondary_reads(not_unique_list, haploblock_dict)
+
+# exit()
 
 # TODO: Make haploblock beds
 
